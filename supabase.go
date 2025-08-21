@@ -36,7 +36,19 @@ func (s SupabaseClient) request(table string, params string) (*http.Response, er
 }
 
 // Uses currying to take a function that takes a SupabaseClient and a
-// Gin Context and returns a Gin-compatible HandlerFunc
+// Gin Context and returns a Gin-compatible HandlerFunc.
+//
+// Example use:
+//
+//	func handleWithClient(client SupabaseClient, ctx *gin.Context) {
+//		...
+//	}
+//
+//	s := SupabaseClient{Url: "database.com", Key: "myapikey"}
+//	handler := s.curryToHandlerFunc(handleWithClient)
+//
+//	r := gin.New()
+//	r.GET("/", handler)
 func (s SupabaseClient) curryToHandlerFunc(f func(SupabaseClient, *gin.Context)) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		f(s, ctx)
