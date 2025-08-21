@@ -2,8 +2,7 @@ package main
 
 import (
 	"net/http"
-
-	"github.com/gin-gonic/gin"
+	"net/url"
 )
 
 // A SupabaseClient connects with Supabase and retrieves course, section,
@@ -21,12 +20,12 @@ type SupabaseClient struct {
 //
 //	s := SupabaseClient{Url: "database.com", Key: "myapikey"}
 //	table := "Courses"
-//	q := url.Values{}
-//	q.Set("select", *)
-//	q.Set("limit", 1)
-//	res, err := s.request(table, q.Encode()) // SELECT * FROM Courses LIMIT 1
+//	params := url.Values{}
+//	params.Set("select", "*")
+//	params.Set("limit", "1")
+//	res, err := s.request(table, params.Encode()) // SELECT * FROM Courses LIMIT 1
 func (s SupabaseClient) request(table string, params string) (*http.Response, error) {
-	fullUrl := s.Url + "/rest/v1/" + table + params
+	fullUrl := s.Url + "/rest/v1/" + table + "?" + params
 	method := "GET"                                 // GET requests will always be used
 	req, _ := http.NewRequest(method, fullUrl, nil) // body always nil when getting data
 	req.Header.Set("apikey", s.Key)
@@ -35,22 +34,11 @@ func (s SupabaseClient) request(table string, params string) (*http.Response, er
 	return http.DefaultClient.Do(req)
 }
 
-// Uses currying to take a function that takes a SupabaseClient and a
-// Gin Context and returns a Gin-compatible HandlerFunc.
-//
-// Example use:
-//
-//	func handleWithClient(client SupabaseClient, ctx *gin.Context) {
-//		...
-//	}
-//
-//	s := SupabaseClient{Url: "database.com", Key: "myapikey"}
-//	handler := s.curryToHandlerFunc(handleWithClient)
-//
-//	r := gin.New()
-//	r.GET("/", handler)
-func (s SupabaseClient) curryToHandlerFunc(f func(SupabaseClient, *gin.Context)) gin.HandlerFunc {
-	return func(ctx *gin.Context) {
-		f(s, ctx)
-	}
+// Get a specific course from the `Courses` table, without section info.
+func (s SupabaseClient) getSimpleCourse(courseCode string) (*http.Response, error) {
+	params := url.Values{}
+	params.Set("select", "*")
+	params.Set("limit", "1")
+	params.Set("course_code", "eq."+courseCode)
+	return s.request("Courses", params.Encode())
 }

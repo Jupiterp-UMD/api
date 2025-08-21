@@ -58,6 +58,8 @@ func mustEnv(key string) string {
 }
 
 func main() {
+	log.SetFlags(log.Ldate | log.Ltime | log.LUTC | log.Lshortfile)
+
 	dbUrl := mustEnv("DATABASE_URL")
 	dbKey := mustEnv("DATABASE_KEY")
 	port := os.Getenv("PORT")
@@ -75,11 +77,10 @@ func main() {
 	// Create SupabaseClient to connect with DB
 	client := SupabaseClient{Url: dbUrl, Key: dbKey}
 
-	// TODO: Use actual handlers
-	handler := client.curryToHandlerFunc(handle)
-
 	// Define handlers
-	r.GET("/", handler)
+	v1 := r.Group("/v1")
+	v1.GET("/", client.handleBaseEndpoint)
+	v1.GET("/course/", client.handleGetCourse)
 
 	// Listen and serve on defined port
 	log.Printf("Listening on port %s", port)
