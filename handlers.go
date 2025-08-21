@@ -19,6 +19,20 @@ type SingleCourseArgs struct {
 
 /* =============================== UTILITIES =============================== */
 
+// Lowers the case of a string with an upper-case first character and returns
+// the resulting string. This is necessary for use in sendMissingArgsError
+// because validator.FieldError.Field() returns the name of a field which must
+// be upper-case to be accessible per Go's case-based field access rules, but
+// convention dictates that the query arguments start with a lower-case letter.
+// This is a dumb problem to have.
+//
+// This assumes ASCII, which should be valid for parsing Jupiterp API params.
+func lowerFirstLetter(s string) string {
+	firstLowered := strings.ToLower(s[0:1])
+	rest := s[1:]
+	return firstLowered + rest
+}
+
 // Takes the error from a failed query argument binding and sends an error
 // message to the caller listing any missing args.
 func sendMissingArgsError(ctx *gin.Context, path string, err error) {
@@ -26,7 +40,7 @@ func sendMissingArgsError(ctx *gin.Context, path string, err error) {
 	missing := []string{}
 	for _, e := range errs {
 		if e.Tag() == "required" {
-			missing = append(missing, e.Field())
+			missing = append(missing, lowerFirstLetter(e.Field()))
 		}
 	}
 

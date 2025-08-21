@@ -21,33 +21,6 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-type Course struct {
-	course_code string
-	name        string
-	min_credits uint16
-	max_credits uint16
-	gen_eds     []string
-	conditions  []string
-	description string
-}
-
-type Instructor struct {
-	slug           string
-	name           string
-	average_rating float32
-}
-
-type Section struct {
-	course_code string
-	sec_code    string
-	instructors []string
-	meetings    []string
-	open_seats  uint16
-	total_seats uint16
-	waitlist    uint16
-	holdfile    uint16
-}
-
 // Get value of `key` from environment vars. Fatal if `key` not present.
 func mustEnv(key string) string {
 	val := os.Getenv(key)
