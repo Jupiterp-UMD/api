@@ -1,12 +1,41 @@
 package main
 
 import (
+	"fmt"
 	"io"
 	"log"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/go-playground/validator/v10"
 )
+
+/* ================================= ARGS ================================== */
+
+type SingleCourseArgs struct {
+	CourseCode string `form:"courseCode" binding:"required"`
+}
+
+/* =============================== UTILITIES =============================== */
+
+// Takes the error from a failed query argument binding and sends an error
+// message to the caller listing any missing args.
+func sendMissingArgsError(ctx *gin.Context, path string, err error) {
+	errs := err.(validator.ValidationErrors)
+	missing := []string{}
+	for _, e := range errs {
+		if e.Tag() == "required" {
+			missing = append(missing, e.Field())
+		}
+	}
+
+	missingString := strings.Join(missing, ", ")
+	log.Printf("Received GET %s but was missing arguments: %s", path, missingString)
+	ctx.JSON(http.StatusBadRequest, gin.H{
+		"error": fmt.Sprintf("Missing required fields: %s", missingString),
+	})
+}
 
 // Takes an internal error and logs it for devs; sends a generic internal error
 // message to an API caller. This allows for devs to see internal errors, but
@@ -18,6 +47,8 @@ func sendInternalError(ctx *gin.Context, path string, err error) {
 	})
 }
 
+/* =============================== HANDLERS ================================ */
+
 // Base endpoint
 func (client SupabaseClient) handleBaseEndpoint(ctx *gin.Context) {
 	ctx.String(http.StatusOK, "Welcome to the Jupiterp API!")
@@ -28,15 +59,15 @@ func (client SupabaseClient) handleBaseEndpoint(ctx *gin.Context) {
 func (client SupabaseClient) handleGetCourse(ctx *gin.Context) {
 	path := "v1/course/"
 
-	courseCode := ctx.Query("courseCode")
-	if courseCode == "" {
-		log.Printf("Received GET %s but no courseCode specified.", path)
-		ctx.JSON(http.StatusBadRequest, gin.H{
-			"error": "specify courseCode parameter (ex. courseCode=ENGL123)",
-		})
+	// Parse args
+	var args SingleCourseArgs
+	if err := ctx.ShouldBindQuery(&args); err != nil {
+		sendMissingArgsError(ctx, path, err)
 		return
 	}
+	courseCode := args.CourseCode
 
+	// Get data from DB
 	res, err := client.getSimpleCourse(courseCode)
 	if err != nil {
 		sendInternalError(ctx, path, err)
