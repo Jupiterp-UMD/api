@@ -55,6 +55,31 @@ func sendInternalError(ctx *gin.Context, path string, err error) {
 	})
 }
 
+// Stream a response from DB back to the API caller.
+func streamResponseToCaller(ctx *gin.Context, res *http.Response, path string) {
+	defer res.Body.Close()
+	for k, vv := range res.Header {
+		switch http.CanonicalHeaderKey(k) {
+		case "Connection", "Keep-Alive", "Proxy-Authenticate", "Proxy-Authorization",
+			"Te", "Trailers", "Transfer-Encoding", "Upgrade":
+			continue
+		default:
+			for _, v := range vv {
+				ctx.Writer.Header().Add(k, v)
+			}
+		}
+	}
+	ctx.Status(res.StatusCode)
+	if _, err := io.Copy(ctx.Writer, res.Body); err != nil {
+		// client aborted or network issue; nothing else to do safely
+		_ = ctx.Error(err)
+		log.Printf("Unexpected error occurred while streaming response to caller of %s: %s", path, err)
+		return
+	}
+
+	log.Printf("Successfully handled GET %s with status %s", path, res.Status)
+}
+
 /* =============================== HANDLERS ================================ */
 
 // Base endpoint
@@ -82,25 +107,5 @@ func (client SupabaseClient) handleGetCourse(ctx *gin.Context) {
 		return
 	}
 
-	// Stream DB response back to user
-	defer res.Body.Close()
-	for k, vv := range res.Header {
-		switch http.CanonicalHeaderKey(k) {
-		case "Connection", "Keep-Alive", "Proxy-Authenticate", "Proxy-Authorization",
-			"Te", "Trailers", "Transfer-Encoding", "Upgrade":
-			continue
-		default:
-			for _, v := range vv {
-				ctx.Writer.Header().Add(k, v)
-			}
-		}
-	}
-	ctx.Status(res.StatusCode)
-	if _, err := io.Copy(ctx.Writer, res.Body); err != nil {
-		// client aborted or network issue; nothing else to do safely
-		_ = ctx.Error(err)
-		return
-	}
-
-	log.Printf("Successfully handled GET %s with status %s", path, res.Status)
+	streamResponseToCaller(ctx, res, path)
 }
