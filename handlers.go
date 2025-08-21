@@ -5,6 +5,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"reflect"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -12,6 +13,8 @@ import (
 )
 
 /* ================================= ARGS ================================== */
+// For all argument structs, the first character of a field must be upper-case
+// so it can be written to when parsing query args.
 
 type SingleCourseArgs struct {
 	CourseCode string `form:"courseCode" binding:"required"`
@@ -19,28 +22,19 @@ type SingleCourseArgs struct {
 
 /* =============================== UTILITIES =============================== */
 
-// Lowers the case of a string with an upper-case first character and returns
-// the resulting string. This is necessary for use in sendMissingArgsError
-// because validator.FieldError.Field() returns the name of a field which must
-// be upper-case to be accessible per Go's case-based field access rules, but
-// convention dictates that the query arguments start with a lower-case letter.
-// This is a dumb problem to have.
-//
-// This assumes ASCII, which should be valid for parsing Jupiterp API params.
-func lowerFirstLetter(s string) string {
-	firstLowered := strings.ToLower(s[0:1])
-	rest := s[1:]
-	return firstLowered + rest
-}
-
 // Takes the error from a failed query argument binding and sends an error
 // message to the caller listing any missing args.
-func sendMissingArgsError(ctx *gin.Context, path string, err error) {
+func sendMissingArgsError(ctx *gin.Context, argsType reflect.Type, path string, err error) {
 	errs := err.(validator.ValidationErrors)
 	missing := []string{}
 	for _, e := range errs {
 		if e.Tag() == "required" {
-			missing = append(missing, lowerFirstLetter(e.Field()))
+			fieldName := e.Field()
+			if field, ok := argsType.FieldByName(fieldName); ok {
+				missing = append(missing, field.Tag.Get("form"))
+			} else {
+				log.Printf("Unknown field name %s found when reporting missing args", fieldName)
+			}
 		}
 	}
 
@@ -76,7 +70,7 @@ func (client SupabaseClient) handleGetCourse(ctx *gin.Context) {
 	// Parse args
 	var args SingleCourseArgs
 	if err := ctx.ShouldBindQuery(&args); err != nil {
-		sendMissingArgsError(ctx, path, err)
+		sendMissingArgsError(ctx, reflect.TypeOf(args), path, err)
 		return
 	}
 	courseCode := args.CourseCode
