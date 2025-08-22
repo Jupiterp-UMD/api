@@ -54,11 +54,9 @@ func main() {
 	v1 := r.Group("/v1")
 	v1.GET("/", client.handleBaseEndpoint)
 
-	// Single course endpoints
-	v1.GET("/course/", client.handleGetCourse)
-
-	// Multiple course endpoints
-	v1.GET("/courses/", client.handleGetCourses)
+	v1.GET("/course", client.handleGetCourse)                 // single course
+	v1.GET("/courses", client.handleGetCourses)               // multiple full courses
+	v1.GET("/courses/minified", client.handleMinifiedCourses) // minified courses
 
 	// Listen and serve on defined port
 	log.Printf("Listening on port %s", port)

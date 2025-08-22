@@ -48,12 +48,15 @@ func (s SupabaseClient) getSimpleCourse(courseCode string) (*http.Response, erro
 }
 
 // Get a list of courses, without section info, that match the given args.
-func (s SupabaseClient) getCourses(args CoursesArgs) (*http.Response, error) {
-	// SELECT * FROM Courses WHERE course_code LIKE `args.Department`*
+// Returns the columns provided as an argument.
+func (s SupabaseClient) getCourses(args CoursesArgs, columns []string) (*http.Response, error) {
+	// SELECT `columns` FROM Courses
+	// WHERE course_code LIKE `args.Department`*
 	// AND `args.GenEds` IN gen_eds
 	// OFFSET `args.Offset` LIMIT `args.Limit`
 	params := url.Values{}
-	params.Set("select", "*")
+	columnsStr := strings.Join(columns, ",")
+	params.Set("select", columnsStr)
 	params.Set("course_code", fmt.Sprintf("like.%s*", args.Department))
 	if len(args.GenEds) > 0 {
 		log.Printf("Filtering by GenEds: %v", args.GenEds)

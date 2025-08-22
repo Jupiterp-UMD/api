@@ -131,6 +131,27 @@ func streamResponseToCaller(ctx *gin.Context, res *http.Response, path string) {
 	log.Printf("Successfully handled GET %s with status %s", path, res.Status)
 }
 
+// General method for getting courses and sending the response to the caller.
+func (client SupabaseClient) getCoursesAndSendResponse(
+	ctx *gin.Context, columns []string, path string) {
+	// Parse args
+	var args CoursesArgs
+	if err := ctx.ShouldBindQuery(&args); err != nil {
+		sendInvalidArgsError(ctx, reflect.TypeOf(args), path, err)
+		return
+	}
+	args.setDefaults()
+
+	// Get data from DB
+	res, err := client.getCourses(args, columns)
+	if err != nil {
+		sendInternalError(ctx, path, err)
+		return
+	}
+
+	streamResponseToCaller(ctx, res, path)
+}
+
 /* =============================== HANDLERS ================================ */
 
 // Base endpoint
@@ -141,7 +162,7 @@ func (client SupabaseClient) handleBaseEndpoint(ctx *gin.Context) {
 // Get info for a single course WITHOUT any section info. Takes courseCode as a
 // query parameter. Example: /v1/course/?courseCode=MATH240
 func (client SupabaseClient) handleGetCourse(ctx *gin.Context) {
-	path := "v1/course/"
+	path := "v1/course"
 
 	// Parse args
 	var args SingleCourseArgs
@@ -164,22 +185,13 @@ func (client SupabaseClient) handleGetCourse(ctx *gin.Context) {
 // Get a list of courses WITHOUT any section info.
 // Example: /v1/courses/?limit=10&offset=50&department=CMSC
 func (client SupabaseClient) handleGetCourses(ctx *gin.Context) {
-	path := "v1/courses/"
+	path := "v1/courses"
+	client.getCoursesAndSendResponse(ctx, []string{"*"}, path)
+}
 
-	// Parse args
-	var args CoursesArgs
-	if err := ctx.ShouldBindQuery(&args); err != nil {
-		sendInvalidArgsError(ctx, reflect.TypeOf(args), path, err)
-		return
-	}
-	args.setDefaults()
-
-	// Get data from DB
-	res, err := client.getCourses(args)
-	if err != nil {
-		sendInternalError(ctx, path, err)
-		return
-	}
-
-	streamResponseToCaller(ctx, res, path)
+// Get a minified list of courses. Returns only the course code and title.
+// Same arguments as `handleGetCourses`.
+func (client SupabaseClient) handleMinifiedCourses(ctx *gin.Context) {
+	path := "v1/courses/minified"
+	client.getCoursesAndSendResponse(ctx, []string{"course_code", "name"}, path)
 }
