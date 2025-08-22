@@ -50,10 +50,14 @@ func main() {
 	// Create SupabaseClient to connect with DB
 	client := SupabaseClient{Url: dbUrl, Key: dbKey}
 
-	// Define handlers
+	/* ============================== ROUTES =============================== */
 	v1 := r.Group("/v1")
 	v1.GET("/", client.handleBaseEndpoint)
+
+	// Single course endpoints
 	v1.GET("/course/", client.handleGetCourse)
+
+	// Multiple course endpoints
 	v1.GET("/courses/", client.handleGetCourses)
 
 	// Listen and serve on defined port

@@ -2,8 +2,10 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
+	"strings"
 )
 
 // A SupabaseClient connects with Supabase and retrieves course, section,
@@ -48,11 +50,16 @@ func (s SupabaseClient) getSimpleCourse(courseCode string) (*http.Response, erro
 // Get a list of courses, without section info, that match the given args.
 func (s SupabaseClient) getCourses(args CoursesArgs) (*http.Response, error) {
 	// SELECT * FROM Courses WHERE course_code LIKE `args.Department`*
+	// AND `args.GenEds` IN gen_eds
 	// OFFSET `args.Offset` LIMIT `args.Limit`
 	params := url.Values{}
 	params.Set("select", "*")
-	params.Set("offset", fmt.Sprintf("%d", args.Offset))
 	params.Set("course_code", fmt.Sprintf("like.%s*", args.Department))
+	if len(args.GenEds) > 0 {
+		log.Printf("Filtering by GenEds: %v", args.GenEds)
+		params.Set("gen_eds", fmt.Sprintf("cs.{%s}", strings.Join(args.GenEds, ",")))
+	}
+	params.Set("offset", fmt.Sprintf("%d", args.Offset))
 	params.Set("limit", fmt.Sprintf("%d", args.Limit))
 	return s.request("Courses", params.Encode())
 }

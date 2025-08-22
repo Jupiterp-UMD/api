@@ -27,13 +27,20 @@ type CoursesArgs struct {
 	// Number of courses to return per page.
 	// Default value: 100; Maximum value: 500
 	Limit uint16 `form:"limit" binding:"omitempty,min=1,max=500"`
+
 	// The offset of courses to view. For example, offset=30 will return
 	// courses starting at the 30th result.
 	// Default value: 0
 	Offset uint16 `form:"offset"`
+
 	// The 4-letter code of a specific department to return results for.
 	// Ex. CMSC, ENGL, MATH.
 	Department string `form:"department" binding:"omitempty,len=4"`
+
+	// A list of 4-letter GenEd codes to filter courses by.
+	// Gin doesn't separate values by comma, so separate `genEd` arguments
+	// need to be used for each one. Ex. ...&genEd=DSSP&genEd=SCIS...
+	GenEds []string `form:"genEd"`
 }
 
 func (c *CoursesArgs) setDefaults() {
@@ -63,6 +70,7 @@ func sendInvalidArgsError(ctx *gin.Context, argsType reflect.Type, path string, 
 				}
 			} else {
 				sendInternalError(ctx, path, fmt.Errorf("failed to identify fieldName: %s", fieldName))
+				return
 			}
 		}
 
