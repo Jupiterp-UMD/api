@@ -41,6 +41,9 @@ type CoursesArgs struct {
 	// Gin doesn't separate values by comma, so separate `genEd` arguments
 	// need to be used for each one. Ex. ...&genEd=DSSP&genEd=SCIS...
 	GenEds []string `form:"genEd"`
+
+	// Conditions for credits; for example, eq.3
+	Credits []string `form:"credits"`
 }
 
 func (c *CoursesArgs) setDefaults() {

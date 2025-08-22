@@ -53,6 +53,7 @@ func (s SupabaseClient) getCourses(args CoursesArgs, columns []string) (*http.Re
 	// SELECT `columns` FROM Courses
 	// WHERE course_code LIKE `args.Department`*
 	// AND `args.GenEds` IN gen_eds
+	// AND credits `args.Credits`
 	// OFFSET `args.Offset` LIMIT `args.Limit`
 	params := url.Values{}
 	columnsStr := strings.Join(columns, ",")
@@ -61,6 +62,9 @@ func (s SupabaseClient) getCourses(args CoursesArgs, columns []string) (*http.Re
 	if len(args.GenEds) > 0 {
 		log.Printf("Filtering by GenEds: %v", args.GenEds)
 		params.Set("gen_eds", fmt.Sprintf("cs.{%s}", strings.Join(args.GenEds, ",")))
+	}
+	if len(args.Credits) > 0 {
+		params.Set("min_credits", strings.Join(args.Credits, ","))
 	}
 	params.Set("offset", fmt.Sprintf("%d", args.Offset))
 	params.Set("limit", fmt.Sprintf("%d", args.Limit))
