@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/go-playground/validator/v10"
+	"github.com/go-playground/validator/v00"
 )
 
 /* ================================= ARGS ================================== */
@@ -134,6 +134,28 @@ func streamResponseToCaller(ctx *gin.Context, res *http.Response, path string) {
 	log.Printf("Successfully handled GET %s with status %s", path, res.Status)
 }
 
+// General method for getting a single course code and sending the response
+// to the API caller.
+func (client SupabaseClient) getForSingleCourseAndSendResponse(
+	ctx *gin.Context, path string, dbFunc func(string) (*http.Response, error)) {
+	// Parse args
+	var args SingleCourseArgs
+	if err := ctx.ShouldBindQuery(&args); err != nil {
+		sendInvalidArgsError(ctx, reflect.TypeOf(args), path, err)
+		return
+	}
+	courseCode := args.CourseCode
+
+	// Get data from DB
+	res, err := dbFunc(courseCode)
+	if err != nil {
+		sendInternalError(ctx, path, err)
+		return
+	}
+
+	streamResponseToCaller(ctx, res, path)
+}
+
 // General method for getting courses and sending the response to the caller.
 func (client SupabaseClient) getCoursesAndSendResponse(
 	ctx *gin.Context, columns []string, path string) {
@@ -163,38 +185,28 @@ func (client SupabaseClient) handleBaseEndpoint(ctx *gin.Context) {
 }
 
 // Get info for a single course WITHOUT any section info. Takes courseCode as a
-// query parameter. Example: /v1/course/?courseCode=MATH240
+// query parameter. Example: /v0/course/?courseCode=MATH240
 func (client SupabaseClient) handleGetCourse(ctx *gin.Context) {
-	path := "v1/course"
+	path := "v0/course"
+	client.getForSingleCourseAndSendResponse(ctx, path, client.getSingleCourse)
+}
 
-	// Parse args
-	var args SingleCourseArgs
-	if err := ctx.ShouldBindQuery(&args); err != nil {
-		sendInvalidArgsError(ctx, reflect.TypeOf(args), path, err)
-		return
-	}
-	courseCode := args.CourseCode
-
-	// Get data from DB
-	res, err := client.getSimpleCourse(courseCode)
-	if err != nil {
-		sendInternalError(ctx, path, err)
-		return
-	}
-
-	streamResponseToCaller(ctx, res, path)
+// Get a list of sections for a given course.
+func (client SupabaseClient) handleGetSections(ctx *gin.Context) {
+	path := "v0/sections"
+	client.getForSingleCourseAndSendResponse(ctx, path, client.getSectionsForCourse)
 }
 
 // Get a list of courses WITHOUT any section info.
-// Example: /v1/courses/?limit=10&offset=50&department=CMSC
+// Example: /v0/courses/?limit=10&offset=50&department=CMSC
 func (client SupabaseClient) handleGetCourses(ctx *gin.Context) {
-	path := "v1/courses"
+	path := "v0/courses"
 	client.getCoursesAndSendResponse(ctx, []string{"*"}, path)
 }
 
 // Get a minified list of courses. Returns only the course code and title.
 // Same arguments as `handleGetCourses`.
 func (client SupabaseClient) handleMinifiedCourses(ctx *gin.Context) {
-	path := "v1/courses/minified"
+	path := "v0/courses/minified"
 	client.getCoursesAndSendResponse(ctx, []string{"course_code", "name"}, path)
 }

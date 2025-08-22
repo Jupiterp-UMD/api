@@ -38,7 +38,7 @@ func (s SupabaseClient) request(table string, params string) (*http.Response, er
 }
 
 // Get a specific course from the `Courses` table, without section info.
-func (s SupabaseClient) getSimpleCourse(courseCode string) (*http.Response, error) {
+func (s SupabaseClient) getSingleCourse(courseCode string) (*http.Response, error) {
 	// SELECT * FROM Courses WHERE course_code = `courseCode` LIMIT 1
 	params := url.Values{}
 	params.Set("select", "*")
@@ -69,4 +69,14 @@ func (s SupabaseClient) getCourses(args CoursesArgs, columns []string) (*http.Re
 	params.Set("offset", fmt.Sprintf("%d", args.Offset))
 	params.Set("limit", fmt.Sprintf("%d", args.Limit))
 	return s.request("Courses", params.Encode())
+}
+
+// Get a list of sections for a specific course.
+func (s SupabaseClient) getSectionsForCourse(courseCode string) (*http.Response, error) {
+	// SELECT * FROM Sections
+	// WHERE course_code = `courseCode`
+	params := url.Values{}
+	params.Set("select", "*")
+	params.Set("course_code", "eq."+courseCode)
+	return s.request("Sections", params.Encode())
 }

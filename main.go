@@ -51,12 +51,14 @@ func main() {
 	client := SupabaseClient{Url: dbUrl, Key: dbKey}
 
 	/* ============================== ROUTES =============================== */
-	v1 := r.Group("/v1")
-	v1.GET("/", client.handleBaseEndpoint)
+	v0 := r.Group("/v0")
+	v0.GET("/", client.handleBaseEndpoint)
 
-	v1.GET("/course", client.handleGetCourse)                 // single course
-	v1.GET("/courses", client.handleGetCourses)               // multiple full courses
-	v1.GET("/courses/minified", client.handleMinifiedCourses) // minified courses
+	v0.GET("/course", client.handleGetCourse)                 // single course
+	v0.GET("/courses", client.handleGetCourses)               // multiple full courses
+	v0.GET("/courses/minified", client.handleMinifiedCourses) // minified courses
+
+	v0.GET("/sections", client.handleGetSections) // sections for a course
 
 	// Listen and serve on defined port
 	log.Printf("Listening on port %s", port)
