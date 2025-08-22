@@ -54,6 +54,7 @@ func main() {
 	v1 := r.Group("/v1")
 	v1.GET("/", client.handleBaseEndpoint)
 	v1.GET("/course/", client.handleGetCourse)
+	v1.GET("/courses/", client.handleGetCourses)
 
 	// Listen and serve on defined port
 	log.Printf("Listening on port %s", port)

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"net/http"
 	"net/url"
 )
@@ -36,9 +37,22 @@ func (s SupabaseClient) request(table string, params string) (*http.Response, er
 
 // Get a specific course from the `Courses` table, without section info.
 func (s SupabaseClient) getSimpleCourse(courseCode string) (*http.Response, error) {
+	// SELECT * FROM Courses WHERE course_code = `courseCode` LIMIT 1
 	params := url.Values{}
 	params.Set("select", "*")
-	params.Set("limit", "1")
 	params.Set("course_code", "eq."+courseCode)
+	params.Set("limit", "1")
+	return s.request("Courses", params.Encode())
+}
+
+// Get a list of courses, without section info, that match the given args.
+func (s SupabaseClient) getCourses(args CoursesArgs) (*http.Response, error) {
+	// SELECT * FROM Courses WHERE course_code LIKE `args.Department`*
+	// OFFSET `args.Offset` LIMIT `args.Limit`
+	params := url.Values{}
+	params.Set("select", "*")
+	params.Set("offset", fmt.Sprintf("%d", args.Offset))
+	params.Set("course_code", fmt.Sprintf("like.%s*", args.Department))
+	params.Set("limit", fmt.Sprintf("%d", args.Limit))
 	return s.request("Courses", params.Encode())
 }

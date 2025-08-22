@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -16,32 +17,74 @@ import (
 // For all argument structs, the first character of a field must be upper-case
 // so it can be written to when parsing query args.
 
+// Arguments for getting info for a single course (without sections info).
 type SingleCourseArgs struct {
 	CourseCode string `form:"courseCode" binding:"required"`
 }
 
+// Arguments for getting a list of courses.
+type CoursesArgs struct {
+	// Number of courses to return per page.
+	// Default value: 100; Maximum value: 500
+	Limit uint16 `form:"limit" binding:"omitempty,min=1,max=500"`
+	// The offset of courses to view. For example, offset=30 will return
+	// courses starting at the 30th result.
+	// Default value: 0
+	Offset uint16 `form:"offset"`
+	// The 4-letter code of a specific department to return results for.
+	// Ex. CMSC, ENGL, MATH.
+	Department string `form:"department" binding:"omitempty,len=4"`
+}
+
+func (c *CoursesArgs) setDefaults() {
+	if c.Limit == 0 {
+		c.Limit = 100
+	}
+}
+
 /* =============================== UTILITIES =============================== */
 
-// Takes the error from a failed query argument binding and sends an error
-// message to the caller listing any missing args.
-func sendMissingArgsError(ctx *gin.Context, argsType reflect.Type, path string, err error) {
-	errs := err.(validator.ValidationErrors)
+// Takes the error from a failed query argument validation/binding and sends a
+// message to the caller listing any missing or invalid args.
+func sendInvalidArgsError(ctx *gin.Context, argsType reflect.Type, path string, err error) {
 	missing := []string{}
-	for _, e := range errs {
-		if e.Tag() == "required" {
+	invalid := []string{}
+
+	var valErrs validator.ValidationErrors
+	if errors.As(err, &valErrs) {
+		errs := err.(validator.ValidationErrors)
+		for _, e := range errs {
 			fieldName := e.Field()
 			if field, ok := argsType.FieldByName(fieldName); ok {
-				missing = append(missing, field.Tag.Get("form"))
+				if e.Tag() == "required" {
+					missing = append(missing, field.Tag.Get("form"))
+				} else {
+					invalid = append(invalid, fmt.Sprintf("%s: %s", fieldName, field.Tag.Get("binding")))
+				}
 			} else {
-				log.Printf("Unknown field name %s found when reporting missing args", fieldName)
+				sendInternalError(ctx, path, fmt.Errorf("failed to identify fieldName: %s", fieldName))
 			}
 		}
+
+		errMsgList := []string{}
+		if len(missing) > 0 {
+			errMsgList = append(errMsgList, fmt.Sprintf("Missing required fields: %s", strings.Join(missing, ", ")))
+		}
+		if len(invalid) > 0 {
+			errMsgList = append(errMsgList, fmt.Sprintf("Invalid fields: %s", strings.Join(invalid, ", ")))
+		}
+		errMsg := strings.Join(errMsgList, "; ")
+		log.Printf("Received GET %s but was missing arguments: %s", path, errMsg)
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"error": errMsg,
+		})
+		return
 	}
 
-	missingString := strings.Join(missing, ", ")
-	log.Printf("Received GET %s but was missing arguments: %s", path, missingString)
+	// Non-validation bind errors (e.g., strconv.NumError: value out of range)
+	log.Printf("Received GET %s with malformed query params: %v", path, err)
 	ctx.JSON(http.StatusBadRequest, gin.H{
-		"error": fmt.Sprintf("Missing required fields: %s", missingString),
+		"error": "Malformed query parameters. Check types and ranges.",
 	})
 }
 
@@ -87,21 +130,44 @@ func (client SupabaseClient) handleBaseEndpoint(ctx *gin.Context) {
 	ctx.String(http.StatusOK, "Welcome to the Jupiterp API!")
 }
 
-// Get course
-// /v1/course/
+// Get info for a single course WITHOUT any section info. Takes courseCode as a
+// query parameter. Example: /v1/course/?courseCode=MATH240
 func (client SupabaseClient) handleGetCourse(ctx *gin.Context) {
 	path := "v1/course/"
 
 	// Parse args
 	var args SingleCourseArgs
 	if err := ctx.ShouldBindQuery(&args); err != nil {
-		sendMissingArgsError(ctx, reflect.TypeOf(args), path, err)
+		sendInvalidArgsError(ctx, reflect.TypeOf(args), path, err)
 		return
 	}
 	courseCode := args.CourseCode
 
 	// Get data from DB
 	res, err := client.getSimpleCourse(courseCode)
+	if err != nil {
+		sendInternalError(ctx, path, err)
+		return
+	}
+
+	streamResponseToCaller(ctx, res, path)
+}
+
+// Get a list of courses WITHOUT any section info.
+// Example: /v1/courses/?limit=10&offset=50&department=CMSC
+func (client SupabaseClient) handleGetCourses(ctx *gin.Context) {
+	path := "v1/courses/"
+
+	// Parse args
+	var args CoursesArgs
+	if err := ctx.ShouldBindQuery(&args); err != nil {
+		sendInvalidArgsError(ctx, reflect.TypeOf(args), path, err)
+		return
+	}
+	args.setDefaults()
+
+	// Get data from DB
+	res, err := client.getCourses(args)
 	if err != nil {
 		sendInternalError(ctx, path, err)
 		return
