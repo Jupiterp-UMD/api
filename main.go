@@ -18,6 +18,7 @@ import (
 	"log"
 	"os"
 
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 )
 
@@ -45,6 +46,7 @@ func main() {
 	// Initialize Gin instance and middleware
 	r := gin.New()
 	r.Use(gin.Recovery())
+	r.Use(cors.Default())
 	// TODO: Add logger, CORS, auth with keys
 
 	// Create SupabaseClient to connect with DB
