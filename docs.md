@@ -49,7 +49,11 @@ Response:
       "Corequisite: MATH140. ",
       "Credit only granted for: CMSC131, CMSC133 or CMSC141."
     ],
-    "description": "Introduction to programming and computer science. Emphasizes understanding and implementation of applications using object-oriented techniques. Develops skills such as program design and testing as well as implementation of programs using a graphical IDE. Programming done in Java."
+    "description": "Introduction to programming and computer science.
+    Emphasizes understanding and implementation of applications using
+    object-oriented techniques. Develops skills such as program design and
+    testing as well as implementation of programs using a graphical IDE.
+    Programming done in Java."
   },
   {
     "course_code": "MATH141",
@@ -60,7 +64,10 @@ Response:
     "conditions": [
       "Prerequisite: Minimum grade of C- in MATH140."
     ],
-    "description": "Continuation of MATH140, including techniques of integration, improper integrals, applications of integration (such as volumes, work, arc length, moments), inverse functions, exponential and logarithmic functions, sequences and series."
+    "description": "Continuation of MATH140, including techniques of
+    integration, improper integrals, applications of integration (such as
+    volumes, work, arc length, moments), inverse functions, exponential and
+    logarithmic functions, sequences and series."
   }
 ]
 ```
@@ -85,7 +92,22 @@ Response:
       "Credit only granted for: AAST351, AAST398M or AAST398N. ",
       "Formerly: AAST398M, AAST398N."
     ],
-    "description": "From yellow peril invaders to model minority allies, Asian Americans have crafted their own dynamic cultural expressions in a number of media from film, television, and music to fashion, sports, and food that reveal and contest the contradictions of the U.S. nation-state. Asian American culture also uniquely sits at the nexus of immigration flows and digital technologies, providing a transnational lens to view the US place in the world. This advanced course, then, will introduce students to the study and practice of Asian American culture as multiple , hybrid, and heterogeneous. It will do so through three sections: section one will introduce students to classical, cultural, and media concepts as well as relevant keywords outlined by Asian American Studies scholars; section two will review the work of Asian American cultural theorists; section three will focus on analyses of particular Asian American cultural productions. In doing so, students will gain an understanding of the shifting and interlocking tensions among the local, the national, and the global that form the cultural geographies of Asian America."
+    "description": "From yellow peril invaders to model minority allies, Asian 
+    Americans have crafted their own dynamic cultural expressions in a number 
+    of media from film, television, and music to fashion, sports, and food that
+    reveal and contest the contradictions of the U.S. nation-state. Asian
+    American culture also uniquely sits at the nexus of immigration flows and
+    digital technologies, providing a transnational lens to view the US place
+    in the world. This advanced course, then, will introduce students to the
+    study and practice of Asian American culture as multiple , hybrid, and
+    heterogeneous. It will do so through three sections: section one will
+    introduce students to classical, cultural, and media concepts as well as
+    relevant keywords outlined by Asian American Studies scholars; section two
+    will review the work of Asian American cultural theorists; section three
+    will focus on analyses of particular Asian American cultural productions.
+    In doing so, students will gain an understanding of the shifting and
+    interlocking tensions among the local, the national, and the global that
+    form the cultural geographies of Asian America."
   },
   {
     "course_code": "AMST320",
@@ -101,7 +123,14 @@ Response:
       "Credit only granted for: AMST320 or AMST328X. ",
       "Formerly: AMST328X."
     ],
-    "description": "Explores the connection between film and disability through an analysis of independent and mainstream American films in various film genres. Specifically, we will consider how these film representations reflect and/or challenge the shifting social perspectives of disability over the 20th and 21st centuries.  Beginning with the presentation of disability as theatrical spectacle in the traveling sideshow and early cinema, we will work our way through film history to develop an understanding of our society's complicated relationship with disability."
+    "description": "Explores the connection between film and disability
+    through an analysis of independent and mainstream American films in various
+    film genres. Specifically, we will consider how these film representations
+    reflect and/or challenge the shifting social perspectives of disability
+    over the 20th and 21st centuries.  Beginning with the presentation of
+    disability as theatrical spectacle in the traveling sideshow and early
+    cinema, we will work our way through film history to develop an
+    understanding of our society's complicated relationship with disability."
   }
 ]
 ```
