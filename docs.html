@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <link rel="stylesheet" type="text/css" href="docs.css">
+    </head>
+    <body>
+        <h1 id="jupiterp-api-v0-docs-pre-release-">Jupiterp API v0 Docs (pre-release)</h1>
+        <h2 id="introduction">Introduction</h2>
+        <p>Welcome to the Jupiterp API, a free and open-source API to get detailed course data for the University of Maryland. Currently, the API is in pre-release phase and is unstable; expect breaking changes, but the information in these docs should be correct and up-to-date.</p>
+        <p>For any questions or bugs, please contact <a href="mailto:admin@jupiterp.com">admin@jupiterp.com</a>.</p>
+        <p>Feel free to view or contribute to the project <a href="https://www.github.com/jupiterp-umd/api">on GitHub</a>.</p>
+        <h2 id="endpoints">Endpoints</h2>
+        <h3 id="-v0-"><code>/v0/</code></h3>
+        <p>This is the base endpoint for v0 of the Jupiterp API. It will simply return a HTTP StatusOK with some text to indicate that the Jupiterp API is online.</p>
+        <h3 id="-v0-courses-"><code>/v0/courses</code></h3>
+        <p>Gets a list of courses that match the given query parameters. This endpoint does not return section information; for section info, use the <code>sections</code> endpoint listed below.</p>
+        <h4 id="query-parameters">Query parameters</h4>
+        <table>
+        <thead>
+        <tr>
+        <th style="text-align:left">param</th>
+        <th style="text-align:left">description</th>
+        <th style="text-align:left">example</th>
+        </tr>
+        </thead>
+        <tbody>
+        <tr>
+        <td style="text-align:left"><code>courseCodes</code></td>
+        <td style="text-align:left">A string of one or multiple comma-separated course codes to fetch course data for; cannot set both <code>courseCodes</code> and <code>prefix</code>, but one must be set.</td>
+        <td style="text-align:left"><code>courseCodes=CMSC132,MATH141</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>prefix</code></td>
+        <td style="text-align:left">The course prefix to match records to; for instance, <code>CMSC1</code> would match all CMSC1XX courses (like CMSC131 and CMSC132).</td>
+        <td style="text-align:left"><code>prefix=CMSC1</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>genEds</code> (optional)</td>
+        <td style="text-align:left">A string of one or multiple comma-separated Gen-Eds to filter for; if multiple Gen-Eds are included, the API will return courses that satisfy all listed Gen-Eds.</td>
+        <td style="text-align:left"><code>genEds=DVUP,DSSP</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>credits</code> (optional)</td>
+        <td style="text-align:left">A string of equalities/inequalities to filter courses by how many credits they have. For courses with a range of possible credit values, filters by the minimum number of credits. Possible equality/inequality expressions are: <code>eq</code>, <code>lte</code>, <code>lt</code>, <code>gt</code>, <code>gte</code>, <code>neq</code> (for equal to, less than or equal to, less than, etc.). For multiple conditions, use multiple <code>credits</code> arguments.</td>
+        <td style="text-align:left"><code>credits=gt.1&amp;credits=lt.5</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>limit</code> (optional)</td>
+        <td style="text-align:left">Maximum number of course records to return; defaults to 100, maximum of 500.</td>
+        <td style="text-align:left"><code>limit=10</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>offset</code> (optional)</td>
+        <td style="text-align:left">How many records to skip when returning courses; defaults to 0</td>
+        <td style="text-align:left"><code>offset=10</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>sortBy</code> (optional)</td>
+        <td style="text-align:left">A comma-separated list of which columns to sort by when returning.</td>
+        <td style="text-align:left"><code>sortBy=name,min_credits</code></td>
+        </tr>
+        </tbody>
+        </table>
+    </body>
+</html>

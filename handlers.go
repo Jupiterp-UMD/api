@@ -22,15 +22,6 @@ type CoursesArgs struct {
 	// A string of one or multiple comma-separated course codes.
 	CourseCodes string `form:"courseCodes"`
 
-	// Number of courses to return per page.
-	// Default value: 100; Maximum value: 500
-	Limit uint16 `form:"limit" binding:"omitempty,min=1,max=500"`
-
-	// The offset of courses to view. For example, offset=30 will return
-	// courses starting at the 30th result.
-	// Default value: 0
-	Offset uint16 `form:"offset"`
-
 	// The prefix
 	Prefix string `form:"prefix"`
 
@@ -39,6 +30,15 @@ type CoursesArgs struct {
 
 	// Conditions for credits; for example, eq.3
 	Credits []string `form:"credits"`
+
+	// Number of courses to return per page.
+	// Default value: 100; Maximum value: 500
+	Limit uint16 `form:"limit" binding:"omitempty,min=1,max=500"`
+
+	// The offset of courses to view. For example, offset=30 will return
+	// courses starting at the 30th result.
+	// Default value: 0
+	Offset uint16 `form:"offset"`
 
 	// String of columns to sort by
 	SortBy string `form:"sortBy"`

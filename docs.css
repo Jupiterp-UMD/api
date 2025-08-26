@@ -1,0 +1,31 @@
+body {
+  color: black;
+  font-family: system-ui;
+  padding-left: 2%;
+  padding-right: 10%;
+}
+
+code {
+  background: #d1d1d1;
+  border-radius: 4px;
+  padding-left: 4px;
+  padding-right: 4px;
+}
+
+table {
+  border-spacing: 0px;
+}
+
+tbody tr:nth-child(odd) {
+  background: #f2f2f2;
+}
+
+tbody tr:nth-child(even) {
+  background: white;
+}
+
+td, th {
+  padding: 10px;
+  text-align: left;
+  vertical-align: top;
+}

@@ -47,7 +47,7 @@ func main() {
 	r := gin.New()
 	r.Use(gin.Recovery())
 	r.Use(cors.Default())
-	// TODO: Add logger, CORS, auth with keys
+	// TODO: Add logger, auth with keys
 
 	// Create SupabaseClient to connect with DB
 	client := SupabaseClient{Url: dbUrl, Key: dbKey}
