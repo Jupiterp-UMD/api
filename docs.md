@@ -166,3 +166,57 @@ Response:
   }
 ]
 ```
+
+### `/v0/sections`
+
+Get sections for specific courses, or for all courses that match a course code prefix.
+
+#### Query parameters
+
+| param | description | example |
+|:--|:--|:--|
+| `courseCodes` (optional) | A string of one or multiple comma-separated course codes to fetch course data for; cannot set both `courseCodes` and `prefix`. | `courseCodes=CMSC132,MATH141` |
+| `prefix` (optional) | The course prefix to match records to; for instance, `CMSC1` would match all CMSC1XX courses (like CMSC131 and CMSC132); cannot set both `courseCodes` and `prefix`. | `prefix=CMSC1` |
+|`limit` (optional) | Maximum number of course records to return; defaults to 100, maximum of 500. | `limit=10` |
+| `offset` (optional) | How many records to skip when returning courses; defaults to 0 | `offset=10` |
+| `sortBy` (optional) | A comma-separated list of which columns to sort by when returning; can be sorted in ascending (`.asc`) or descending (`.desc`) order. | `sortBy=name.asc,min_credits.desc` |
+
+#### Examples
+
+##### Getting all sections for a course
+
+Request: `GET http://api.jupiterp.com/v0/sections?courseCodes=CMSC433`
+
+Response:
+```
+[
+  {
+    "course_code": "CMSC433",
+    "sec_code": "0101",
+    "instructors": [
+      "Anwar Mamat"
+    ],
+    "meetings": [
+      "TuTh-11:00am-12:15pm-CSI-1115"
+    ],
+    "open_seats": 0,
+    "total_seats": 140,
+    "waitlist": 7,
+    "holdfile": 0
+  },
+  {
+    "course_code": "CMSC433",
+    "sec_code": "0201",
+    "instructors": [
+      "Anwar Mamat"
+    ],
+    "meetings": [
+      "TuTh-3:30pm-4:45pm-IRB-0318"
+    ],
+    "open_seats": 15,
+    "total_seats": 50,
+    "waitlist": 0,
+    "holdfile": null
+  }
+]
+```

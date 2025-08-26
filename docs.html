@@ -179,6 +179,79 @@
             <span class="hljs-attr">"name"</span>: <span class="hljs-string">"Special Problems in Astronomy"</span>
         }
         ]
+        </code></pre><h3 id="-v0-sections-"><code>/v0/sections</code></h3>
+        <p>Get sections for specific courses, or for all courses that match a course code prefix.</p>
+        <h4 id="query-parameters">Query parameters</h4>
+        <table>
+        <thead>
+        <tr>
+        <th style="text-align:left">param</th>
+        <th style="text-align:left">description</th>
+        <th style="text-align:left">example</th>
+        </tr>
+        </thead>
+        <tbody>
+        <tr>
+        <td style="text-align:left"><code>courseCodes</code> (optional)</td>
+        <td style="text-align:left">A string of one or multiple comma-separated course codes to fetch course data for; cannot set both <code>courseCodes</code> and <code>prefix</code>.</td>
+        <td style="text-align:left"><code>courseCodes=CMSC132,MATH141</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>prefix</code> (optional)</td>
+        <td style="text-align:left">The course prefix to match records to; for instance, <code>CMSC1</code> would match all CMSC1XX courses (like CMSC131 and CMSC132); cannot set both <code>courseCodes</code> and <code>prefix</code>.</td>
+        <td style="text-align:left"><code>prefix=CMSC1</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>limit</code> (optional)</td>
+        <td style="text-align:left">Maximum number of course records to return; defaults to 100, maximum of 500.</td>
+        <td style="text-align:left"><code>limit=10</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>offset</code> (optional)</td>
+        <td style="text-align:left">How many records to skip when returning courses; defaults to 0</td>
+        <td style="text-align:left"><code>offset=10</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>sortBy</code> (optional)</td>
+        <td style="text-align:left">A comma-separated list of which columns to sort by when returning; can be sorted in ascending (<code>.asc</code>) or descending (<code>.desc</code>) order.</td>
+        <td style="text-align:left"><code>sortBy=name.asc,min_credits.desc</code></td>
+        </tr>
+        </tbody>
+        </table>
+        <h4 id="examples">Examples</h4>
+        <h5 id="getting-all-sections-for-a-course">Getting all sections for a course</h5>
+        <p>Request: <code>GET http://api.jupiterp.com/v0/sections?courseCodes=CMSC433</code></p>
+        <p>Response:</p>
+        <pre><code>[
+        {
+            <span class="hljs-attr">"course_code"</span>: <span class="hljs-string">"CMSC433"</span>,
+            <span class="hljs-attr">"sec_code"</span>: <span class="hljs-string">"0101"</span>,
+            <span class="hljs-attr">"instructors"</span>: [
+            <span class="hljs-string">"Anwar Mamat"</span>
+            ],
+            <span class="hljs-attr">"meetings"</span>: [
+            <span class="hljs-string">"TuTh-11:00am-12:15pm-CSI-1115"</span>
+            ],
+            <span class="hljs-attr">"open_seats"</span>: <span class="hljs-number">0</span>,
+            <span class="hljs-attr">"total_seats"</span>: <span class="hljs-number">140</span>,
+            <span class="hljs-attr">"waitlist"</span>: <span class="hljs-number">7</span>,
+            <span class="hljs-attr">"holdfile"</span>: <span class="hljs-number">0</span>
+        },
+        {
+            <span class="hljs-attr">"course_code"</span>: <span class="hljs-string">"CMSC433"</span>,
+            <span class="hljs-attr">"sec_code"</span>: <span class="hljs-string">"0201"</span>,
+            <span class="hljs-attr">"instructors"</span>: [
+            <span class="hljs-string">"Anwar Mamat"</span>
+            ],
+            <span class="hljs-attr">"meetings"</span>: [
+            <span class="hljs-string">"TuTh-3:30pm-4:45pm-IRB-0318"</span>
+            ],
+            <span class="hljs-attr">"open_seats"</span>: <span class="hljs-number">15</span>,
+            <span class="hljs-attr">"total_seats"</span>: <span class="hljs-number">50</span>,
+            <span class="hljs-attr">"waitlist"</span>: <span class="hljs-number">0</span>,
+            <span class="hljs-attr">"holdfile"</span>: <span class="hljs-literal">null</span>
+        }
+        ]
         </code></pre>
     </body>
 </html>
