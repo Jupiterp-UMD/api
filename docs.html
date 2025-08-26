@@ -12,6 +12,37 @@
         <p>For any questions or bugs, please contact <a href="mailto:admin@jupiterp.com">admin@jupiterp.com</a>.</p>
         <p>Feel free to view or contribute to the project <a href="https://www.github.com/jupiterp-umd/api">on GitHub</a>.</p>
         <h2 id="endpoints">Endpoints</h2>
+        <table>
+        <thead>
+        <tr>
+        <th style="text-align:left">path</th>
+        <th style="text-align:left">description</th>
+        <th style="text-align:left">link</th>
+        </tr>
+        </thead>
+        <tbody>
+        <tr>
+        <td style="text-align:left"><code>/v0/</code></td>
+        <td style="text-align:left">Base endpoint</td>
+        <td style="text-align:left"><a href="#-v0-">jump</a></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>/v0/courses</code></td>
+        <td style="text-align:left">Get a list of courses with full course info</td>
+        <td style="text-align:left"><a href="#-v0-courses-">jump</a></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>/v0/courses/minified</code></td>
+        <td style="text-align:left">Get a list of courses with just the code and title for each</td>
+        <td style="text-align:left"><a href="#-v0-courses-minified-">jump</a></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>/v0/sections</code></td>
+        <td style="text-align:left">Get a list of sections for courses</td>
+        <td style="text-align:left"><a href="#-v0-sections-">jump</a></td>
+        </tr>
+        </tbody>
+        </table>
         <h3 id="-v0-"><code>/v0/</code></h3>
         <p>This is the base endpoint for v0 of the Jupiterp API. It will simply return a HTTP StatusOK with some text to indicate that the Jupiterp API is online.</p>
         <h3 id="-v0-courses-"><code>/v0/courses</code></h3>
@@ -60,6 +91,53 @@
         <td style="text-align:left"><code>sortBy</code> (optional)</td>
         <td style="text-align:left">A comma-separated list of which columns to sort by when returning; can be sorted in ascending (<code>.asc</code>) or descending (<code>.desc</code>) order.</td>
         <td style="text-align:left"><code>sortBy=name.asc,min_credits.desc</code></td>
+        </tr>
+        </tbody>
+        </table>
+        <h4 id="output">Output</h4>
+        <table>
+        <thead>
+        <tr>
+        <th style="text-align:left">field</th>
+        <th style="text-align:center">type</th>
+        <th style="text-align:left">description</th>
+        </tr>
+        </thead>
+        <tbody>
+        <tr>
+        <td style="text-align:left"><code>course_code</code></td>
+        <td style="text-align:center">string</td>
+        <td style="text-align:left">The unique course code for a course, which consists of a four-letter department code, a three digit course identifier, and optional letters at the end.</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>name</code></td>
+        <td style="text-align:center">string</td>
+        <td style="text-align:left">The name of a course, providing very brief information about the subject of the course.</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>min_credits</code></td>
+        <td style="text-align:center">int</td>
+        <td style="text-align:left">The minimum number of credits this course is worth. For courses that do not have a range of possible credit values, this field is simply the number of credits the course is worth. All courses have a non-null <code>min_credits</code> field.</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>max_credits</code></td>
+        <td style="text-align:center">int or null</td>
+        <td style="text-align:left">The maximum number of credits a course is worth, if the course has a range of possible credit values. For courses that have a set credit value, this field will be null.</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>gen_eds</code></td>
+        <td style="text-align:center">string[] or null</td>
+        <td style="text-align:left">A list of four-letter codes for the Gen-Ed requirements this course satisfies (ex. DSSP, DVUP).</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>conditions</code></td>
+        <td style="text-align:center">string[] or null</td>
+        <td style="text-align:left">A list of additionall conditions listed for this course. This consists of things like prerequisites, corequisites, or additional information.</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>description</code></td>
+        <td style="text-align:center">string or null</td>
+        <td style="text-align:left">A detailed description of the course. Some courses do not have a description, especially independent research courses.</td>
         </tr>
         </tbody>
         </table>
@@ -161,6 +239,28 @@
         <p>Gets a minified list of courses that satisfy the given parameters. Takes the same parameters as the <code>/v0/courses</code> endpoint, but returns only the course code and title.</p>
         <h4 id="query-parameters">Query parameters</h4>
         <p>Same as the parameters for <code>/v0/courses</code>; see <a href="#query-parameters">here</a>.</p>
+        <h4 id="output">Output</h4>
+        <table>
+        <thead>
+        <tr>
+        <th style="text-align:left">field</th>
+        <th style="text-align:center">type</th>
+        <th style="text-align:left">description</th>
+        </tr>
+        </thead>
+        <tbody>
+        <tr>
+        <td style="text-align:left"><code>course_code</code></td>
+        <td style="text-align:center">string</td>
+        <td style="text-align:left">The unique course code for a course, which consists of a four-letter department code, a three digit course identifier, and optional letters at the end.</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>name</code></td>
+        <td style="text-align:center">string</td>
+        <td style="text-align:left">The name of a course, providing very brief information about the subject of the course.</td>
+        </tr>
+        </tbody>
+        </table>
         <h4 id="examples">Examples</h4>
         <h5 id="getting-courses-with-a-specific-prefix">Getting courses with a specific prefix</h5>
         <p>Request: <code>GET http://api.jupiterp.com/v0/courses/minified?prefix=ASTR4&amp;sortBy=name.asc</code></p>
@@ -180,7 +280,7 @@
         }
         ]
         </code></pre><h3 id="-v0-sections-"><code>/v0/sections</code></h3>
-        <p>Get sections for specific courses, or for all courses that match a course code prefix.</p>
+        <p>Get sections for specific courses, or for all courses that match a course code prefix. Note that some courses don&#39;t have any sections; for example, most independent research courses, like ASTR498, will not return any sections.</p>
         <h4 id="query-parameters">Query parameters</h4>
         <table>
         <thead>
@@ -215,6 +315,58 @@
         <td style="text-align:left"><code>sortBy</code> (optional)</td>
         <td style="text-align:left">A comma-separated list of which columns to sort by when returning; can be sorted in ascending (<code>.asc</code>) or descending (<code>.desc</code>) order.</td>
         <td style="text-align:left"><code>sortBy=name.asc,min_credits.desc</code></td>
+        </tr>
+        </tbody>
+        </table>
+        <h4 id="output">Output</h4>
+        <table>
+        <thead>
+        <tr>
+        <th style="text-align:left">field</th>
+        <th style="text-align:center">type</th>
+        <th style="text-align:left">description</th>
+        </tr>
+        </thead>
+        <tbody>
+        <tr>
+        <td style="text-align:left"><code>course_code</code></td>
+        <td style="text-align:center">string</td>
+        <td style="text-align:left">The unique course code for a course, which consists of a four-letter department code, a three digit course identifier, and optional letters at the end.</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>sec_code</code></td>
+        <td style="text-align:center">string</td>
+        <td style="text-align:left">The code (usually 4 numbers, but sometimes includes letters) for a section. The <code>sec_code</code> is unique within a given course, but a section may have the same <code>sec_code</code> as a section with a different <code>course_code</code>.</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>instructors</code></td>
+        <td style="text-align:center">string[]</td>
+        <td style="text-align:left">A list of the names of instructors teaching a course. Instructor may not be an actual name; for instance, it could be &quot;Instructor: TBA&quot;.</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>meetings</code></td>
+        <td style="text-align:center">string[]</td>
+        <td style="text-align:left">A list of meeting times and places for the section. Meeting strings have different formats depending on the class format: <ul><li>In-person, synchronous: &quot;Days-StartTime-EndTime-Building-Room&quot;</li><li>Online, synchronous: &quot;Days-StartTime-EndTime-OnlineSync&quot;</li><li>Online, asynchronous: &quot;OnlineAsync&quot;</li><li>Unspecified: &quot;Unspecified&quot;</li></ul> Some courses can have both synchronous and asynchronous meetings.</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>open_seats</code></td>
+        <td style="text-align:center">int</td>
+        <td style="text-align:left">The number of available seats for this section.</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>total_seats</code></td>
+        <td style="text-align:center">int</td>
+        <td style="text-align:left">The total number of seats in this section.</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>waitlist</code></td>
+        <td style="text-align:center">int</td>
+        <td style="text-align:left">How many people are on the waitlist for this section.</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>holdfile</code></td>
+        <td style="text-align:center">int or null</td>
+        <td style="text-align:left">The number of people on the holdfile for this section, if a holdfile exists.</td>
         </tr>
         </tbody>
         </table>

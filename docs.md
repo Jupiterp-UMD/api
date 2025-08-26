@@ -10,6 +10,13 @@ Feel free to view or contribute to the project [on GitHub](https://www.github.co
 
 ## Endpoints
 
+| path | description | link |
+| :-- | :-- | :-- |
+| `/v0/` | Base endpoint | [jump](#-v0-) |
+| `/v0/courses` | Get a list of courses with full course info | [jump](#-v0-courses-) |
+| `/v0/courses/minified` | Get a list of courses with just the code and title for each | [jump](#-v0-courses-minified-) |
+| `/v0/sections` | Get a list of sections for courses | [jump](#-v0-sections-) |
+
 ### `/v0/`
 
 This is the base endpoint for v0 of the Jupiterp API. It will simply return a HTTP StatusOK with some text to indicate that the Jupiterp API is online.
@@ -29,6 +36,18 @@ Gets a list of courses that match the given query parameters. This endpoint does
 |`limit` (optional) | Maximum number of course records to return; defaults to 100, maximum of 500. | `limit=10` |
 | `offset` (optional) | How many records to skip when returning courses; defaults to 0 | `offset=10` |
 | `sortBy` (optional) | A comma-separated list of which columns to sort by when returning; can be sorted in ascending (`.asc`) or descending (`.desc`) order. | `sortBy=name.asc,min_credits.desc` |
+
+#### Output
+
+| field | type | description |
+| :-- | :--: | :-- |
+| `course_code` | string | The unique course code for a course, which consists of a four-letter department code, a three digit course identifier, and optional letters at the end. |
+| `name` | string | The name of a course, providing very brief information about the subject of the course. |
+| `min_credits` | int | The minimum number of credits this course is worth. For courses that do not have a range of possible credit values, this field is simply the number of credits the course is worth. All courses have a non-null `min_credits` field. |
+| `max_credits` | int or null | The maximum number of credits a course is worth, if the course has a range of possible credit values. For courses that have a set credit value, this field will be null. |
+| `gen_eds` | string[] or null | A list of four-letter codes for the Gen-Ed requirements this course satisfies (ex. DSSP, DVUP). |
+| `conditions` | string[] or null | A list of additionall conditions listed for this course. This consists of things like prerequisites, corequisites, or additional information. |
+| `description` | string or null | A detailed description of the course. Some courses do not have a description, especially independent research courses. |
 
 #### Examples
 
@@ -143,6 +162,13 @@ Gets a minified list of courses that satisfy the given parameters. Takes the sam
 
 Same as the parameters for `/v0/courses`; see [here](#query-parameters).
 
+#### Output
+
+| field | type | description |
+| :-- | :--: | :-- |
+| `course_code` | string | The unique course code for a course, which consists of a four-letter department code, a three digit course identifier, and optional letters at the end. |
+| `name` | string | The name of a course, providing very brief information about the subject of the course. |
+
 #### Examples
 
 ##### Getting courses with a specific prefix
@@ -169,7 +195,7 @@ Response:
 
 ### `/v0/sections`
 
-Get sections for specific courses, or for all courses that match a course code prefix.
+Get sections for specific courses, or for all courses that match a course code prefix. Note that some courses don't have any sections; for example, most independent research courses, like ASTR498, will not return any sections.
 
 #### Query parameters
 
@@ -180,6 +206,19 @@ Get sections for specific courses, or for all courses that match a course code p
 |`limit` (optional) | Maximum number of course records to return; defaults to 100, maximum of 500. | `limit=10` |
 | `offset` (optional) | How many records to skip when returning courses; defaults to 0 | `offset=10` |
 | `sortBy` (optional) | A comma-separated list of which columns to sort by when returning; can be sorted in ascending (`.asc`) or descending (`.desc`) order. | `sortBy=name.asc,min_credits.desc` |
+
+#### Output
+
+| field | type | description |
+| :-- | :--: | :-- |
+| `course_code` | string | The unique course code for a course, which consists of a four-letter department code, a three digit course identifier, and optional letters at the end. |
+| `sec_code` | string | The code (usually 4 numbers, but sometimes includes letters) for a section. The `sec_code` is unique within a given course, but a section may have the same `sec_code` as a section with a different `course_code`. |
+| `instructors` | string[] | A list of the names of instructors teaching a course. Instructor may not be an actual name; for instance, it could be "Instructor: TBA". |
+| `meetings` | string[] | A list of meeting times and places for the section. Meeting strings have different formats depending on the class format: <ul><li>In-person, synchronous: "Days-StartTime-EndTime-Building-Room"</li><li>Online, synchronous: "Days-StartTime-EndTime-OnlineSync"</li><li>Online, asynchronous: "OnlineAsync"</li><li>Unspecified: "Unspecified"</li></ul> Some courses can have both synchronous and asynchronous meetings. |
+|`open_seats` | int | The number of available seats for this section. |
+| `total_seats` | int | The total number of seats in this section. |
+| `waitlist` | int | How many people are on the waitlist for this section. |
+| `holdfile` | int or null | The number of people on the holdfile for this section, if a holdfile exists. |
 
 #### Examples
 
