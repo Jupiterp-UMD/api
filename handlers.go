@@ -17,13 +17,11 @@ import (
 // For all argument structs, the first character of a field must be upper-case
 // so it can be written to when parsing query args.
 
-// Arguments for getting info for a single course (without sections info).
-type SingleCourseArgs struct {
-	CourseCode string `form:"courseCode" binding:"required"`
-}
-
 // Arguments for getting a list of courses.
 type CoursesArgs struct {
+	// A string of one or multiple comma-separated course codes.
+	CourseCodes string `form:"courseCodes"`
+
 	// Number of courses to return per page.
 	// Default value: 100; Maximum value: 500
 	Limit uint16 `form:"limit" binding:"omitempty,min=1,max=500"`
@@ -33,22 +31,50 @@ type CoursesArgs struct {
 	// Default value: 0
 	Offset uint16 `form:"offset"`
 
-	// The 4-letter code of a specific department to return results for.
-	// Ex. CMSC, ENGL, MATH.
-	Department string `form:"department" binding:"omitempty,len=4"`
+	// The prefix
+	Prefix string `form:"prefix"`
 
-	// A list of 4-letter GenEd codes to filter courses by.
-	// Gin doesn't separate values by comma, so separate `genEd` arguments
-	// need to be used for each one. Ex. ...&genEd=DSSP&genEd=SCIS...
-	GenEds []string `form:"genEd"`
+	// A comma-separated list of GenEd codes to filter courses by.
+	GenEds string `form:"genEds"`
 
 	// Conditions for credits; for example, eq.3
 	Credits []string `form:"credits"`
+
+	// String of columns to sort by
+	SortBy string `form:"sortBy"`
 }
 
 func (c *CoursesArgs) setDefaults() {
 	if c.Limit == 0 {
 		c.Limit = 100
+	}
+}
+
+// Arguments for getting a list of sections.
+type SectionsArgs struct {
+	// A comma-separated list of course codes to get sections for.
+	CourseCodes string `form:"courseCodes"`
+
+	// A prefix to filter courses by. For example, prefix=MATH will return
+	// all sections for all MATH courses.
+	CoursePrefix string `form:"prefix"`
+
+	// Number of sections to return per page.
+	// Default value: 100; Maximum value: 500
+	Limit uint16 `form:"limit" binding:"omitempty,min=1,max=500"`
+
+	// The offset of sections to view. For example, offset=30 will return
+	// sections starting at the 30th result.
+	// Default value: 0
+	Offset uint16 `form:"offset"`
+
+	// String of columns to sort by
+	SortBy string `form:"sortBy"`
+}
+
+func (s *SectionsArgs) setDefaults() {
+	if s.Limit == 0 {
+		s.Limit = 100
 	}
 }
 
@@ -134,28 +160,6 @@ func streamResponseToCaller(ctx *gin.Context, res *http.Response, path string) {
 	log.Printf("Successfully handled GET %s with status %s", path, res.Status)
 }
 
-// General method for getting a single course code and sending the response
-// to the API caller.
-func (client SupabaseClient) getForSingleCourseAndSendResponse(
-	ctx *gin.Context, path string, dbFunc func(string) (*http.Response, error)) {
-	// Parse args
-	var args SingleCourseArgs
-	if err := ctx.ShouldBindQuery(&args); err != nil {
-		sendInvalidArgsError(ctx, reflect.TypeOf(args), path, err)
-		return
-	}
-	courseCode := args.CourseCode
-
-	// Get data from DB
-	res, err := dbFunc(courseCode)
-	if err != nil {
-		sendInternalError(ctx, path, err)
-		return
-	}
-
-	streamResponseToCaller(ctx, res, path)
-}
-
 // General method for getting courses and sending the response to the caller.
 func (client SupabaseClient) getCoursesAndSendResponse(
 	ctx *gin.Context, columns []string, path string) {
@@ -164,6 +168,16 @@ func (client SupabaseClient) getCoursesAndSendResponse(
 	if err := ctx.ShouldBindQuery(&args); err != nil {
 		sendInvalidArgsError(ctx, reflect.TypeOf(args), path, err)
 		return
+	}
+	if args.CourseCodes != "" && args.Prefix != "" {
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"error": "Cannot specify both courseCodes and prefix",
+		})
+	}
+	if args.CourseCodes == "" && args.Prefix == "" {
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"error": "Must specify either courseCodes or prefix",
+		})
 	}
 	args.setDefaults()
 
@@ -184,21 +198,8 @@ func (client SupabaseClient) handleBaseEndpoint(ctx *gin.Context) {
 	ctx.String(http.StatusOK, "Welcome to the Jupiterp API!")
 }
 
-// Get info for a single course WITHOUT any section info. Takes courseCode as a
-// query parameter. Example: /v0/course/?courseCode=MATH240
-func (client SupabaseClient) handleGetCourse(ctx *gin.Context) {
-	path := "v0/course"
-	client.getForSingleCourseAndSendResponse(ctx, path, client.getSingleCourse)
-}
-
-// Get a list of sections for a given course.
-func (client SupabaseClient) handleGetSections(ctx *gin.Context) {
-	path := "v0/sections"
-	client.getForSingleCourseAndSendResponse(ctx, path, client.getSectionsForCourse)
-}
-
 // Get a list of courses WITHOUT any section info.
-// Example: /v0/courses/?limit=10&offset=50&department=CMSC
+// Example: /v0/courses/?limit=10&offset=50&prefix=CMSC
 func (client SupabaseClient) handleGetCourses(ctx *gin.Context) {
 	path := "v0/courses"
 	client.getCoursesAndSendResponse(ctx, []string{"*"}, path)
@@ -209,4 +210,30 @@ func (client SupabaseClient) handleGetCourses(ctx *gin.Context) {
 func (client SupabaseClient) handleMinifiedCourses(ctx *gin.Context) {
 	path := "v0/courses/minified"
 	client.getCoursesAndSendResponse(ctx, []string{"course_code", "name"}, path)
+}
+
+// Get a list of sections for a given course.
+func (client SupabaseClient) handleGetSections(ctx *gin.Context) {
+	path := "v0/sections"
+
+	var args SectionsArgs
+	if err := ctx.ShouldBindQuery(&args); err != nil {
+		sendInvalidArgsError(ctx, reflect.TypeOf(args), path, err)
+		return
+	}
+	if args.CourseCodes != "" && args.CoursePrefix != "" {
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"error": "Cannot specify both courseCodes and coursePrefix",
+		})
+	}
+	args.setDefaults()
+
+	// Get data from DB
+	res, err := client.getSections(args)
+	if err != nil {
+		sendInternalError(ctx, path, err)
+		return
+	}
+
+	streamResponseToCaller(ctx, res, path)
 }
