@@ -5,11 +5,15 @@ body {
   padding-right: 10%;
 }
 
-code {
+p code {
   background: #d1d1d1;
   border-radius: 4px;
   padding-left: 4px;
   padding-right: 4px;
+}
+
+pre {
+  max-width: 80%;
 }
 
 table {

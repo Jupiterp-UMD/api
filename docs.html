@@ -58,10 +58,76 @@
         </tr>
         <tr>
         <td style="text-align:left"><code>sortBy</code> (optional)</td>
-        <td style="text-align:left">A comma-separated list of which columns to sort by when returning.</td>
-        <td style="text-align:left"><code>sortBy=name,min_credits</code></td>
+        <td style="text-align:left">A comma-separated list of which columns to sort by when returning; can be sorted in ascending (<code>.asc</code>) or descending (<code>.desc</code>) order.</td>
+        <td style="text-align:left"><code>sortBy=name.asc,min_credits.desc</code></td>
         </tr>
         </tbody>
         </table>
+        <h4 id="examples">Examples</h4>
+        <h5 id="getting-multiple-specific-courses">Getting multiple specific courses</h5>
+        <p>Request: <code>GET http://api.jupiterp.com/v0/courses?courseCodes=CMSC131,MATH141</code></p>
+        <p>Response:</p>
+        <pre><code>[
+        {
+            <span class="hljs-attr">"course_code"</span>: <span class="hljs-string">"CMSC131"</span>,
+            <span class="hljs-attr">"name"</span>: <span class="hljs-string">"Object-Oriented Programming I"</span>,
+            <span class="hljs-attr">"min_credits"</span>: <span class="hljs-number">4</span>,
+            <span class="hljs-attr">"max_credits"</span>: <span class="hljs-literal">null</span>,
+            <span class="hljs-attr">"gen_eds"</span>: <span class="hljs-literal">null</span>,
+            <span class="hljs-attr">"conditions"</span>: [
+            <span class="hljs-string">"Corequisite: MATH140. "</span>,
+            <span class="hljs-string">"Credit only granted for: CMSC131, CMSC133 or CMSC141."</span>
+            ],
+            <span class="hljs-attr">"description"</span>: <span class="hljs-string">"Introduction to programming and computer science. Emphasizes understanding and implementation of applications using object-oriented techniques. Develops skills such as program design and testing as well as implementation of programs using a graphical IDE. Programming done in Java."</span>
+        },
+        {
+            <span class="hljs-attr">"course_code"</span>: <span class="hljs-string">"MATH141"</span>,
+            <span class="hljs-attr">"name"</span>: <span class="hljs-string">"Calculus II"</span>,
+            <span class="hljs-attr">"min_credits"</span>: <span class="hljs-number">4</span>,
+            <span class="hljs-attr">"max_credits"</span>: <span class="hljs-literal">null</span>,
+            <span class="hljs-attr">"gen_eds"</span>: <span class="hljs-literal">null</span>,
+            <span class="hljs-attr">"conditions"</span>: [
+            <span class="hljs-string">"Prerequisite: Minimum grade of C- in MATH140."</span>
+            ],
+            <span class="hljs-attr">"description"</span>: <span class="hljs-string">"Continuation of MATH140, including techniques of integration, improper integrals, applications of integration (such as volumes, work, arc length, moments), inverse functions, exponential and logarithmic functions, sequences and series."</span>
+        }
+        ]
+        </code></pre><h5 id="getting-courses-that-satisfy-gen-ed-requirements">Getting courses that satisfy Gen-Ed requirements</h5>
+        <p>Request: <code>GET http://api.jupiterp.com/v0/courses?genEds=DVUP,DSSP&amp;limit=2&amp;sortBy=courseCode.asc</code></p>
+        <p>Response:</p>
+        <pre><code>[
+        {
+            <span class="hljs-attr">"course_code"</span>: <span class="hljs-string">"AAST351"</span>,
+            <span class="hljs-attr">"name"</span>: <span class="hljs-string">"Asian Americans and Media"</span>,
+            <span class="hljs-attr">"min_credits"</span>: <span class="hljs-number">3</span>,
+            <span class="hljs-attr">"max_credits"</span>: <span class="hljs-literal">null</span>,
+            <span class="hljs-attr">"gen_eds"</span>: [
+            <span class="hljs-string">"DSSP"</span>,
+            <span class="hljs-string">"DVUP"</span>
+            ],
+            <span class="hljs-attr">"conditions"</span>: [
+            <span class="hljs-string">"Credit only granted for: AAST351, AAST398M or AAST398N. "</span>,
+            <span class="hljs-string">"Formerly: AAST398M, AAST398N."</span>
+            ],
+            <span class="hljs-attr">"description"</span>: <span class="hljs-string">"From yellow peril invaders to model minority allies, Asian Americans have crafted their own dynamic cultural expressions in a number of media from film, television, and music to fashion, sports, and food that reveal and contest the contradictions of the U.S. nation-state. Asian American culture also uniquely sits at the nexus of immigration flows and digital technologies, providing a transnational lens to view the US place in the world. This advanced course, then, will introduce students to the study and practice of Asian American culture as multiple , hybrid, and heterogeneous. It will do so through three sections: section one will introduce students to classical, cultural, and media concepts as well as relevant keywords outlined by Asian American Studies scholars; section two will review the work of Asian American cultural theorists; section three will focus on analyses of particular Asian American cultural productions. In doing so, students will gain an understanding of the shifting and interlocking tensions among the local, the national, and the global that form the cultural geographies of Asian America."</span>
+        },
+        {
+            <span class="hljs-attr">"course_code"</span>: <span class="hljs-string">"AMST320"</span>,
+            <span class="hljs-attr">"name"</span>: <span class="hljs-string">"(Dis)ability in American Film"</span>,
+            <span class="hljs-attr">"min_credits"</span>: <span class="hljs-number">3</span>,
+            <span class="hljs-attr">"max_credits"</span>: <span class="hljs-literal">null</span>,
+            <span class="hljs-attr">"gen_eds"</span>: [
+            <span class="hljs-string">"DSHU"</span>,
+            <span class="hljs-string">"DSSP"</span>,
+            <span class="hljs-string">"DVUP"</span>
+            ],
+            <span class="hljs-attr">"conditions"</span>: [
+            <span class="hljs-string">"Credit only granted for: AMST320 or AMST328X. "</span>,
+            <span class="hljs-string">"Formerly: AMST328X."</span>
+            ],
+            <span class="hljs-attr">"description"</span>: <span class="hljs-string">"Explores the connection between film and disability through an analysis of independent and mainstream American films in various film genres. Specifically, we will consider how these film representations reflect and/or challenge the shifting social perspectives of disability over the 20th and 21st centuries.  Beginning with the presentation of disability as theatrical spectacle in the traveling sideshow and early cinema, we will work our way through film history to develop an understanding of our society's complicated relationship with disability."</span>
+        }
+        ]
+        </code></pre>
     </body>
 </html>
