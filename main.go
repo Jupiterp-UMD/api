@@ -52,9 +52,17 @@ func main() {
 	// Create SupabaseClient to connect with DB
 	client := SupabaseClient{Url: dbUrl, Key: dbKey}
 
+	/* ========================== STATIC CONTENT =========================== */
+
+	r.StaticFile("/favicon.svg", "./favicon.svg")
+	r.StaticFile("/docs.css", "./docs.css")
+
 	/* ============================== ROUTES =============================== */
+
+	r.GET("/", handleDocs) // API Docs
+
 	v0 := r.Group("/v0")
-	v0.GET("/", client.handleBaseEndpoint)
+	v0.GET("/", client.handleBaseEndpoint) // base v0 endpoint
 
 	v0.GET("/courses", client.handleGetCourses)               // full courses
 	v0.GET("/courses/minified", client.handleMinifiedCourses) // minified courses

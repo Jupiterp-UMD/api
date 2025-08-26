@@ -1,6 +1,8 @@
 <!DOCTYPE html>
 <html>
     <head>
+        <meta charset="utf-8">
+        <link rel="icon" href="/favicon.svg?" type="image/svg+xml">
         <link rel="stylesheet" type="text/css" href="docs.css">
     </head>
     <body>
@@ -25,13 +27,13 @@
         </thead>
         <tbody>
         <tr>
-        <td style="text-align:left"><code>courseCodes</code></td>
-        <td style="text-align:left">A string of one or multiple comma-separated course codes to fetch course data for; cannot set both <code>courseCodes</code> and <code>prefix</code>, but one must be set.</td>
+        <td style="text-align:left"><code>courseCodes</code> (optional)</td>
+        <td style="text-align:left">A string of one or multiple comma-separated course codes to fetch course data for; cannot set both <code>courseCodes</code> and <code>prefix</code>.</td>
         <td style="text-align:left"><code>courseCodes=CMSC132,MATH141</code></td>
         </tr>
         <tr>
-        <td style="text-align:left"><code>prefix</code></td>
-        <td style="text-align:left">The course prefix to match records to; for instance, <code>CMSC1</code> would match all CMSC1XX courses (like CMSC131 and CMSC132).</td>
+        <td style="text-align:left"><code>prefix</code> (optional)</td>
+        <td style="text-align:left">The course prefix to match records to; for instance, <code>CMSC1</code> would match all CMSC1XX courses (like CMSC131 and CMSC132); cannot set both <code>courseCodes</code> and <code>prefix</code>.</td>
         <td style="text-align:left"><code>prefix=CMSC1</code></td>
         </tr>
         <tr>

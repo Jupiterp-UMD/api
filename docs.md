@@ -22,8 +22,8 @@ Gets a list of courses that match the given query parameters. This endpoint does
 
 | param | description | example |
 |:--|:--|:--|
-| `courseCodes` | A string of one or multiple comma-separated course codes to fetch course data for; cannot set both `courseCodes` and `prefix`, but one must be set. | `courseCodes=CMSC132,MATH141` |
-| `prefix` | The course prefix to match records to; for instance, `CMSC1` would match all CMSC1XX courses (like CMSC131 and CMSC132). | `prefix=CMSC1` |
+| `courseCodes` (optional) | A string of one or multiple comma-separated course codes to fetch course data for; cannot set both `courseCodes` and `prefix`. | `courseCodes=CMSC132,MATH141` |
+| `prefix` (optional) | The course prefix to match records to; for instance, `CMSC1` would match all CMSC1XX courses (like CMSC131 and CMSC132); cannot set both `courseCodes` and `prefix`. | `prefix=CMSC1` |
 | `genEds` (optional) | A string of one or multiple comma-separated Gen-Eds to filter for; if multiple Gen-Eds are included, the API will return courses that satisfy all listed Gen-Eds. | `genEds=DVUP,DSSP` |
 | `credits` (optional) | A string of equalities/inequalities to filter courses by how many credits they have. For courses with a range of possible credit values, filters by the minimum number of credits. Possible equality/inequality expressions are: `eq`, `lte`, `lt`, `gt`, `gte`, `neq` (for equal to, less than or equal to, less than, etc.). For multiple conditions, use multiple `credits` arguments. | `credits=gt.1&credits=lt.5` |
 |`limit` (optional) | Maximum number of course records to return; defaults to 100, maximum of 500. | `limit=10` |

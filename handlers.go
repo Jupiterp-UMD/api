@@ -173,11 +173,7 @@ func (client SupabaseClient) getCoursesAndSendResponse(
 		ctx.JSON(http.StatusBadRequest, gin.H{
 			"error": "Cannot specify both courseCodes and prefix",
 		})
-	}
-	if args.CourseCodes == "" && args.Prefix == "" {
-		ctx.JSON(http.StatusBadRequest, gin.H{
-			"error": "Must specify either courseCodes or prefix",
-		})
+		return
 	}
 	args.setDefaults()
 
@@ -193,7 +189,12 @@ func (client SupabaseClient) getCoursesAndSendResponse(
 
 /* =============================== HANDLERS ================================ */
 
-// Base endpoint
+// Docs endpoint
+func handleDocs(ctx *gin.Context) {
+	ctx.File("docs.html")
+}
+
+// Base v0 endpoint
 func (client SupabaseClient) handleBaseEndpoint(ctx *gin.Context) {
 	ctx.String(http.StatusOK, "Welcome to the Jupiterp API!")
 }
@@ -220,11 +221,6 @@ func (client SupabaseClient) handleGetSections(ctx *gin.Context) {
 	if err := ctx.ShouldBindQuery(&args); err != nil {
 		sendInvalidArgsError(ctx, reflect.TypeOf(args), path, err)
 		return
-	}
-	if args.CourseCodes != "" && args.CoursePrefix != "" {
-		ctx.JSON(http.StatusBadRequest, gin.H{
-			"error": "Cannot specify both courseCodes and coursePrefix",
-		})
 	}
 	args.setDefaults()
 
