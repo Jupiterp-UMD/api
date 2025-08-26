@@ -157,6 +157,28 @@
             understanding of our society's complicated relationship with disability."</span>
         }
         ]
+        </code></pre><h3 id="-v0-courses-minified-"><code>/v0/courses/minified</code></h3>
+        <p>Gets a minified list of courses that satisfy the given parameters. Takes the same parameters as the <code>/v0/courses</code> endpoint, but returns only the course code and title.</p>
+        <h4 id="query-parameters">Query parameters</h4>
+        <p>Same as the parameters for <code>/v0/courses</code>; see <a href="#query-parameters">here</a>.</p>
+        <h4 id="examples">Examples</h4>
+        <h5 id="getting-courses-with-a-specific-prefix">Getting courses with a specific prefix</h5>
+        <p>Request: <code>GET http://api.jupiterp.com/v0/courses/minified?prefix=ASTR4&amp;sortBy=name.asc</code></p>
+        <p>Response:</p>
+        <pre><code>[
+        {
+            <span class="hljs-attr">"course_code"</span>: <span class="hljs-string">"ASTR422"</span>,
+            <span class="hljs-attr">"name"</span>: <span class="hljs-string">"Cosmology"</span>
+        },
+        {
+            <span class="hljs-attr">"course_code"</span>: <span class="hljs-string">"ASTR421"</span>,
+            <span class="hljs-attr">"name"</span>: <span class="hljs-string">"Galaxies"</span>
+        },
+        {
+            <span class="hljs-attr">"course_code"</span>: <span class="hljs-string">"ASTR498"</span>,
+            <span class="hljs-attr">"name"</span>: <span class="hljs-string">"Special Problems in Astronomy"</span>
+        }
+        ]
         </code></pre>
     </body>
 </html>

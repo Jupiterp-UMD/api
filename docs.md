@@ -134,3 +134,35 @@ Response:
   }
 ]
 ```
+
+### `/v0/courses/minified`
+
+Gets a minified list of courses that satisfy the given parameters. Takes the same parameters as the `/v0/courses` endpoint, but returns only the course code and title.
+
+#### Query parameters
+
+Same as the parameters for `/v0/courses`; see [here](#query-parameters).
+
+#### Examples
+
+##### Getting courses with a specific prefix
+
+Request: `GET http://api.jupiterp.com/v0/courses/minified?prefix=ASTR4&sortBy=name.asc`
+
+Response:
+```
+[
+  {
+    "course_code": "ASTR422",
+    "name": "Cosmology"
+  },
+  {
+    "course_code": "ASTR421",
+    "name": "Galaxies"
+  },
+  {
+    "course_code": "ASTR498",
+    "name": "Special Problems in Astronomy"
+  }
+]
+```
