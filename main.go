@@ -70,6 +70,8 @@ func main() {
 
 	v0.GET("/sections", client.handleGetSections) // sections for courses
 
+	v0.GET("/instructors", client.handleGetInstructors) // all instructors with ratings
+
 	// Listen and serve on defined port
 	log.Printf("Listening on port %s", port)
 	r.Run(":" + port)

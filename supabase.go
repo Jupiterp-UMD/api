@@ -66,8 +66,8 @@ func (s SupabaseClient) getCourses(args CoursesArgs, columns []string) (*http.Re
 	if args.GenEds != "" {
 		params.Set("gen_eds", fmt.Sprintf("cs.{%s}", args.GenEds))
 	}
-	if len(args.Credits) > 0 {
-		params.Set("min_credits", strings.Join(args.Credits, ","))
+	for _, cond := range args.Credits {
+		params.Add("min_credits", cond)
 	}
 	params.Set("offset", fmt.Sprintf("%d", args.Offset))
 	params.Set("limit", fmt.Sprintf("%d", args.Limit))
@@ -98,4 +98,31 @@ func (s SupabaseClient) getSections(args SectionsArgs) (*http.Response, error) {
 		params.Set("order", args.SortBy)
 	}
 	return s.request("sections", params.Encode())
+}
+
+// Get a list of instructors (including inactive ones) and their ratings.
+func (s SupabaseClient) getInstructors(args InstructorArgs) (*http.Response, error) {
+	// SELECT * FROM instructors
+	// WHERE instructor_name IN `args.InstructorNames`
+	// AND instructor_slug IN `args.InstructorSlugs`
+	// AND ratings `args.Ratings`
+	// OFFSET `args.Offset` LIMIT `args.Limit`
+	// SORT BY `args.SortBy`
+	params := url.Values{}
+	params.Set("select", "*")
+	if args.InstructorNames != "" {
+		params.Set("name", fmt.Sprintf("in.(%s)", args.InstructorNames))
+	}
+	if args.InstructorSlugs != "" {
+		params.Set("slug", fmt.Sprintf("in.(%s)", args.InstructorSlugs))
+	}
+	for _, cond := range args.Ratings {
+		params.Add("average_rating", cond)
+	}
+	params.Set("offset", fmt.Sprintf("%d", args.Offset))
+	params.Set("limit", fmt.Sprintf("%d", args.Limit))
+	if args.SortBy != "" {
+		params.Set("order", args.SortBy)
+	}
+	return s.request("instructors", params.Encode())
 }

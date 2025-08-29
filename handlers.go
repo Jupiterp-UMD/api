@@ -78,6 +78,36 @@ func (s *SectionsArgs) setDefaults() {
 	}
 }
 
+// Arguments for getting a list of instructors.
+type InstructorArgs struct {
+	// A comma-separated list of instructor names.
+	InstructorNames string `form:"instructorNames"`
+
+	// A comma-separated list of instructor slugs.
+	InstructorSlugs string `form:"instructorSlugs"`
+
+	// Conditions for instructor ratings; for example, gt.3.5
+	Ratings []string `form:"ratings"`
+
+	// Number of sections to return per page.
+	// Default value: 100; Maximum value: 500
+	Limit uint16 `form:"limit" binding:"omitempty,min=1,max=500"`
+
+	// The offset of sections to view. For example, offset=30 will return
+	// sections starting at the 30th result.
+	// Default value: 0
+	Offset uint16 `form:"offset"`
+
+	// String of columns to sort by
+	SortBy string `form:"sortBy"`
+}
+
+func (i *InstructorArgs) setDefaults() {
+	if i.Limit == 0 {
+		i.Limit = 100
+	}
+}
+
 /* =============================== UTILITIES =============================== */
 
 // Takes the error from a failed query argument validation/binding and sends a
@@ -231,6 +261,27 @@ func (client SupabaseClient) handleGetSections(ctx *gin.Context) {
 
 	// Get data from DB
 	res, err := client.getSections(args)
+	if err != nil {
+		sendInternalError(ctx, path, err)
+		return
+	}
+
+	streamResponseToCaller(ctx, res, path)
+}
+
+// Get a list of instructors with their ratings.
+func (client SupabaseClient) handleGetInstructors(ctx *gin.Context) {
+	path := "v0/instructors"
+
+	var args InstructorArgs
+	if err := ctx.ShouldBindQuery(&args); err != nil {
+		sendInvalidArgsError(ctx, reflect.TypeOf(args), path, err)
+		return
+	}
+	args.setDefaults()
+
+	// Get data from DB
+	res, err := client.getInstructors(args)
 	if err != nil {
 		sendInternalError(ctx, path, err)
 		return

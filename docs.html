@@ -46,11 +46,18 @@
         <td style="text-align:left">Get a list of sections for courses</td>
         <td style="text-align:left"><a href="#-v0-sections-">jump</a></td>
         </tr>
+        <tr>
+        <td style="text-align:left"><code>/v0/instructors</code></td>
+        <td style="text-align:left">Get a list of instructors and their ratings</td>
+        <td style="text-align:left"><a href="#-v0-instructors-">jump</a></td>
+        </tr>
         </tbody>
         </table>
         <h3 id="-v0-"><code>/v0/</code></h3>
+        <p><a href="#endpoints">(back to endpoints)</a></p>
         <p>This is the base endpoint for v0 of the Jupiterp API. It will simply return a HTTP StatusOK with some text to indicate that the Jupiterp API is online.</p>
         <h3 id="-v0-courses-"><code>/v0/courses</code></h3>
+        <p><a href="#endpoints">(back to endpoints)</a></p>
         <p>Gets a list of courses that match the given query parameters. This endpoint does not return section information; for section info, use the <code>sections</code> endpoint listed below.</p>
         <h4 id="query-parameters">Query parameters</h4>
         <table>
@@ -241,6 +248,7 @@
         }
         ]
         </code></pre><h3 id="-v0-courses-minified-"><code>/v0/courses/minified</code></h3>
+        <p><a href="#endpoints">(back to endpoints)</a></p>
         <p>Gets a minified list of courses that satisfy the given parameters. Takes the same parameters as the <code>/v0/courses</code> endpoint, but returns only the course code and title.</p>
         <h4 id="query-parameters">Query parameters</h4>
         <p>Same as the parameters for <code>/v0/courses</code>; see <a href="#-v0-courses-">here</a>.</p>
@@ -285,6 +293,7 @@
         }
         ]
         </code></pre><h3 id="-v0-courses-withsections-"><code>/v0/courses/withSections</code></h3>
+        <p><a href="#endpoints">(back to endpoints)</a></p>
         <p>Gets a list of full courses data and associated sections data. Each returned course also contains a (potentially-empty) list of sections for that course.</p>
         <h4 id="query-parameters">Query parameters</h4>
         <p>Same as the parameters for <code>/v0/courses</code>; see <a href="#-v0-courses-">here</a>.</p>
@@ -392,6 +401,7 @@
         }
         ]
         </code></pre><h3 id="-v0-sections-"><code>/v0/sections</code></h3>
+        <p><a href="#endpoints">(back to endpoints)</a></p>
         <p>Get sections for specific courses, or for all courses that match a course code prefix. Note that some courses don&#39;t have any sections; for example, most independent research courses, like ASTR498, will not return any sections.</p>
         <h4 id="query-parameters">Query parameters</h4>
         <table>
@@ -514,6 +524,109 @@
             <span class="hljs-attr">"total_seats"</span>: <span class="hljs-number">50</span>,
             <span class="hljs-attr">"waitlist"</span>: <span class="hljs-number">0</span>,
             <span class="hljs-attr">"holdfile"</span>: <span class="hljs-literal">null</span>
+        }
+        ]
+        </code></pre><h3 id="-v0-instructors-"><code>/v0/instructors</code></h3>
+        <p><a href="#endpoints">(back to endpoints)</a></p>
+        <p>Get a list of all instructors and their average ratings, including instructors not actively teaching any courses.</p>
+        <h4 id="query-parameters">Query parameters</h4>
+        <table>
+        <thead>
+        <tr>
+        <th style="text-align:left">param</th>
+        <th style="text-align:left">description</th>
+        <th style="text-align:left">example</th>
+        </tr>
+        </thead>
+        <tbody>
+        <tr>
+        <td style="text-align:left"><code>instructorNames</code> (optional)</td>
+        <td style="text-align:left">A comma-separated list of instructor names to get results for</td>
+        <td style="text-align:left"><code>instructorNames=Testudo%20Terrapin,Darryll%20Pines</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>instructorSlugs</code> (optional)</td>
+        <td style="text-align:left">A comma-separated list of instructor slugs to get results for; slugs are the internal identifier used to distinguish an instructor and are unique to each instructor. See PlanetTerp API spec for more info. Cannot set both <code>instructorNames</code> and <code>instructorSlugs</code>.</td>
+        <td style="text-align:left"><code>instructorSlugs=testudo,pines</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>ratings</code> (optional)</td>
+        <td style="text-align:left">A string of equalities/inequalities to filter instructors by their average rating on PlanetTerp. Possible equality/inequality expressions are: eq, lte, lt, gt, gte, neq (for equal to, less than or equal to, less than, etc.). For multiple conditions, use multiple ratings arguments.</td>
+        <td style="text-align:left"><code>ratings=gt.3.14&amp;ratings=lt.5</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>limit</code> (optional)</td>
+        <td style="text-align:left">The number of results to return. Defaults to 100, maximum of 500.</td>
+        <td style="text-align:left"><code>limit=10</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>offset</code> (optional)</td>
+        <td style="text-align:left">How many records to skip when returning results; defaults to 0</td>
+        <td style="text-align:left"><code>offset=5</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>sortBy</code> (optional)</td>
+        <td style="text-align:left">A comma-separated list of which columns to sort by when returning; can be sorted in ascending (<code>.asc</code>) or descending (<code>.desc</code>) order.</td>
+        <td style="text-align:left"><code>sortBy=average_rating.asc,name.desc</code></td>
+        </tr>
+        </tbody>
+        </table>
+        <h4 id="output">Output</h4>
+        <table>
+        <thead>
+        <tr>
+        <th style="text-align:left">field</th>
+        <th style="text-align:center">type</th>
+        <th style="text-align:left">description</th>
+        </tr>
+        </thead>
+        <tbody>
+        <tr>
+        <td style="text-align:left"><code>slug</code></td>
+        <td style="text-align:center">string</td>
+        <td style="text-align:left">The internal string used to identify an individual instructor, unique to that instructor. See PlanetTerp API spec for more info.</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>name</code></td>
+        <td style="text-align:center">string</td>
+        <td style="text-align:left">The instructor&#39;s name as listed on PlanetTerp</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>average_rating</code></td>
+        <td style="text-align:center">float</td>
+        <td style="text-align:left">The average rating given to that professor from reviews on PlanetTerp</td>
+        </tr>
+        </tbody>
+        </table>
+        <h4 id="examples">Examples</h4>
+        <h5 id="getting-high-rated-non-5-star-instructors">Getting high-rated, non-5 star instructors</h5>
+        <p>Request: <code>GET http://api.jupiterp.com/v0/instructors?ratings=gt.4.5&amp;ratings=lt.5&amp;limit=5&amp;sortBy=average_rating.desc,name.desc</code></p>
+        <p>Response:</p>
+        <pre><code>[
+        {
+            <span class="hljs-attr">"slug"</span>: <span class="hljs-string">"gramlich_meredith"</span>,
+            <span class="hljs-attr">"name"</span>: <span class="hljs-string">"Meredith Gramlich"</span>,
+            <span class="hljs-attr">"average_rating"</span>: <span class="hljs-number">4.9667</span>
+        },
+        {
+            <span class="hljs-attr">"slug"</span>: <span class="hljs-string">"cropper"</span>,
+            <span class="hljs-attr">"name"</span>: <span class="hljs-string">"Maureen Cropper"</span>,
+            <span class="hljs-attr">"average_rating"</span>: <span class="hljs-number">4.9474</span>
+        },
+        {
+            <span class="hljs-attr">"slug"</span>: <span class="hljs-string">"gruber_sean"</span>,
+            <span class="hljs-attr">"name"</span>: <span class="hljs-string">"Sean Gruber"</span>,
+            <span class="hljs-attr">"average_rating"</span>: <span class="hljs-number">4.9398</span>
+        },
+        {
+            <span class="hljs-attr">"slug"</span>: <span class="hljs-string">"o’brien"</span>,
+            <span class="hljs-attr">"name"</span>: <span class="hljs-string">"Terrence O’Brien"</span>,
+            <span class="hljs-attr">"average_rating"</span>: <span class="hljs-number">4.9375</span>
+        },
+        {
+            <span class="hljs-attr">"slug"</span>: <span class="hljs-string">"zomback"</span>,
+            <span class="hljs-attr">"name"</span>: <span class="hljs-string">"Jenna Zomback"</span>,
+            <span class="hljs-attr">"average_rating"</span>: <span class="hljs-number">4.9355</span>
         }
         ]
         </code></pre>

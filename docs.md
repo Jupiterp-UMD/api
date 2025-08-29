@@ -17,12 +17,17 @@ Feel free to view or contribute to the project [on GitHub](https://www.github.co
 | `/v0/courses/minified` | Get a list of courses with just the code and title for each | [jump](#-v0-courses-minified-) |
 | `/v0/courses/withSections` | Get a list of courses, including section data for each course | [jump](#-v0-courses-withsections-) |
 | `/v0/sections` | Get a list of sections for courses | [jump](#-v0-sections-) |
+| `/v0/instructors` | Get a list of instructors and their ratings | [jump](#-v0-instructors-) |
 
-### `/v0/`
+### `/v0/` 
+
+[(back to endpoints)](#endpoints)
 
 This is the base endpoint for v0 of the Jupiterp API. It will simply return a HTTP StatusOK with some text to indicate that the Jupiterp API is online.
 
-### `/v0/courses`
+### `/v0/courses` 
+
+[(back to endpoints)](#endpoints)
 
 Gets a list of courses that match the given query parameters. This endpoint does not return section information; for section info, use the `sections` endpoint listed below.
 
@@ -155,7 +160,9 @@ Response:
 ]
 ```
 
-### `/v0/courses/minified`
+### `/v0/courses/minified` 
+
+[(back to endpoints)](#endpoints)
 
 Gets a minified list of courses that satisfy the given parameters. Takes the same parameters as the `/v0/courses` endpoint, but returns only the course code and title.
 
@@ -194,7 +201,9 @@ Response:
 ]
 ```
 
-### `/v0/courses/withSections`
+### `/v0/courses/withSections` 
+
+[(back to endpoints)](#endpoints)
 
 Gets a list of full courses data and associated sections data. Each returned course also contains a (potentially-empty) list of sections for that course.
 
@@ -272,7 +281,9 @@ Response:
 ]
 ```
 
-### `/v0/sections`
+### `/v0/sections` 
+
+[(back to endpoints)](#endpoints)
 
 Get sections for specific courses, or for all courses that match a course code prefix. Note that some courses don't have any sections; for example, most independent research courses, like ASTR498, will not return any sections.
 
@@ -335,6 +346,68 @@ Response:
     "total_seats": 50,
     "waitlist": 0,
     "holdfile": null
+  }
+]
+```
+
+### `/v0/instructors` 
+
+[(back to endpoints)](#endpoints)
+
+Get a list of all instructors and their average ratings, including instructors not actively teaching any courses.
+
+#### Query parameters
+
+| param | description | example |
+|:--|:--|:--|
+| `instructorNames` (optional) | A comma-separated list of instructor names to get results for | `instructorNames=Testudo%20Terrapin,Darryll%20Pines` |
+| `instructorSlugs` (optional) | A comma-separated list of instructor slugs to get results for; slugs are the internal identifier used to distinguish an instructor and are unique to each instructor. See PlanetTerp API spec for more info. Cannot set both `instructorNames` and `instructorSlugs`. | `instructorSlugs=testudo,pines` |
+| `ratings` (optional) | A string of equalities/inequalities to filter instructors by their average rating on PlanetTerp. Possible equality/inequality expressions are: eq, lte, lt, gt, gte, neq (for equal to, less than or equal to, less than, etc.). For multiple conditions, use multiple ratings arguments. | `ratings=gt.3.14&ratings=lt.5` |
+| `limit` (optional) | The number of results to return. Defaults to 100, maximum of 500. | `limit=10`|
+|`offset` (optional) | How many records to skip when returning results; defaults to 0 | `offset=5` |
+| `sortBy` (optional) | A comma-separated list of which columns to sort by when returning; can be sorted in ascending (`.asc`) or descending (`.desc`) order. | `sortBy=average_rating.asc,name.desc` |
+
+#### Output
+
+| field | type | description |
+| :-- | :--: | :-- |
+| `slug` | string | The internal string used to identify an individual instructor, unique to that instructor. See PlanetTerp API spec for more info. |
+| `name` | string | The instructor's name as listed on PlanetTerp |
+| `average_rating` | float | The average rating given to that professor from reviews on PlanetTerp |
+
+#### Examples
+
+##### Getting high-rated, non-5 star instructors
+
+Request: `GET http://api.jupiterp.com/v0/instructors?ratings=gt.4.5&ratings=lt.5&limit=5&sortBy=average_rating.desc,name.desc`
+
+Response:
+```
+[
+  {
+    "slug": "gramlich_meredith",
+    "name": "Meredith Gramlich",
+    "average_rating": 4.9667
+  },
+  {
+    "slug": "cropper",
+    "name": "Maureen Cropper",
+    "average_rating": 4.9474
+  },
+  {
+    "slug": "gruber_sean",
+    "name": "Sean Gruber",
+    "average_rating": 4.9398
+  },
+  {
+    "slug": "o’brien",
+    "name": "Terrence O’Brien",
+    "average_rating": 4.9375
+  },
+  {
+    "slug": "zomback",
+    "name": "Jenna Zomback",
+    "average_rating": 4.9355
   }
 ]
 ```
