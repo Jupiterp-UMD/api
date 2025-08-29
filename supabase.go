@@ -21,11 +21,11 @@ type SupabaseClient struct {
 //	import "net/url"
 //
 //	s := SupabaseClient{Url: "database.com", Key: "myapikey"}
-//	table := "Courses"
+//	table := "courses"
 //	params := url.Values{}
 //	params.Set("select", "*")
 //	params.Set("limit", "1")
-//	res, err := s.request(table, params.Encode()) // SELECT * FROM Courses LIMIT 1
+//	res, err := s.request(table, params.Encode()) // SELECT * FROM courses LIMIT 1
 func (s SupabaseClient) request(table string, params string) (*http.Response, error) {
 	fullUrl := s.Url + "/rest/v1/" + table + "?" + params
 	method := "GET"                                 // GET requests will always be used
@@ -36,20 +36,20 @@ func (s SupabaseClient) request(table string, params string) (*http.Response, er
 	return http.DefaultClient.Do(req)
 }
 
-// Get a specific course from the `Courses` table, without section info.
+// Get a specific course from the `courses` table, without section info.
 func (s SupabaseClient) getSingleCourse(courseCode string) (*http.Response, error) {
-	// SELECT * FROM Courses WHERE course_code = `courseCode` LIMIT 1
+	// SELECT * FROM courses WHERE course_code = `courseCode` LIMIT 1
 	params := url.Values{}
 	params.Set("select", "*")
 	params.Set("course_code", "eq."+courseCode)
 	params.Set("limit", "1")
-	return s.request("Courses", params.Encode())
+	return s.request("courses", params.Encode())
 }
 
 // Get a list of courses, without section info, that match the given args.
 // Returns the columns provided as an argument.
 func (s SupabaseClient) getCourses(args CoursesArgs, columns []string) (*http.Response, error) {
-	// SELECT `columns` FROM Courses
+	// SELECT `columns` FROM courses
 	// WHERE course_code LIKE `args.Prefix`* / WHERE course_code IN `args.CourseCodes`
 	// AND `args.GenEds` IN gen_eds
 	// AND credits `args.Credits`
@@ -74,12 +74,12 @@ func (s SupabaseClient) getCourses(args CoursesArgs, columns []string) (*http.Re
 	if args.SortBy != "" {
 		params.Set("order", args.SortBy)
 	}
-	return s.request("Courses", params.Encode())
+	return s.request("courses", params.Encode())
 }
 
 // Get a list of sections for one or many courses.
 func (s SupabaseClient) getSections(args SectionsArgs) (*http.Response, error) {
-	// SELECT * FROM Sections
+	// SELECT * FROM sections
 	// WHERE course_code IN `args.CourseCodes` / WHERE course_code LIKE `args.CoursePrefix`*
 	// AND credits `args.Credits`
 	// OFFSET `args.Offset` LIMIT `args.Limit`
@@ -97,5 +97,5 @@ func (s SupabaseClient) getSections(args SectionsArgs) (*http.Response, error) {
 	if args.SortBy != "" {
 		params.Set("order", args.SortBy)
 	}
-	return s.request("Sections", params.Encode())
+	return s.request("sections", params.Encode())
 }
