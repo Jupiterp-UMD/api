@@ -15,6 +15,7 @@ Feel free to view or contribute to the project [on GitHub](https://www.github.co
 | `/v0/` | Base endpoint | [jump](#-v0-) |
 | `/v0/courses` | Get a list of courses with full course info | [jump](#-v0-courses-) |
 | `/v0/courses/minified` | Get a list of courses with just the code and title for each | [jump](#-v0-courses-minified-) |
+| `/v0/courses/withSections` | Get a list of courses, including section data for each course | [jump](#-v0-courses-withsections-) |
 | `/v0/sections` | Get a list of sections for courses | [jump](#-v0-sections-) |
 
 ### `/v0/`
@@ -160,7 +161,7 @@ Gets a minified list of courses that satisfy the given parameters. Takes the sam
 
 #### Query parameters
 
-Same as the parameters for `/v0/courses`; see [here](#query-parameters).
+Same as the parameters for `/v0/courses`; see [here](#-v0-courses-).
 
 #### Output
 
@@ -189,6 +190,84 @@ Response:
   {
     "course_code": "ASTR498",
     "name": "Special Problems in Astronomy"
+  }
+]
+```
+
+### `/v0/courses/withSections`
+
+Gets a list of full courses data and associated sections data. Each returned course also contains a (potentially-empty) list of sections for that course.
+
+#### Query parameters
+
+Same as the parameters for `/v0/courses`; see [here](#-v0-courses-).
+
+#### Output
+
+| field | type | description |
+| :-- | :--: | :-- |
+| `course_code` | string | The unique course code for a course, which consists of a four-letter department code, a three digit course identifier, and optional letters at the end. |
+| `name` | string | The name of a course, providing very brief information about the subject of the course. |
+| `min_credits` | int | The minimum number of credits this course is worth. For courses that do not have a range of possible credit values, this field is simply the number of credits the course is worth. All courses have a non-null `min_credits` field. |
+| `max_credits` | int or null | The maximum number of credits a course is worth, if the course has a range of possible credit values. For courses that have a set credit value, this field will be null. |
+| `gen_eds` | string[] or null | A list of four-letter codes for the Gen-Ed requirements this course satisfies (ex. DSSP, DVUP). |
+| `conditions` | string[] or null | A list of additionall conditions listed for this course. This consists of things like prerequisites, corequisites, or additional information. |
+| `description` | string or null | A detailed description of the course. Some courses do not have a description, especially independent research courses. |
+| `sections` | Section[] | A list of `Section`s. A `Section` consists of the fields described in the output of `/v0/sections` (see [here](#-v0-sections-)) |
+
+#### Examples
+
+##### Getting a course with sections data
+
+Request: `GET http://api.jupiterp.com/v0/courses/withSections?courseCodes=CMSC433`
+
+Response:
+```
+[
+  {
+    "course_code": "CMSC433",
+    "name": "Programming Language Technologies and Paradigms",
+    "min_credits": 3,
+    "max_credits": null,
+    "gen_eds": null,
+    "conditions": [
+      "Prerequisite: Minimum grade of C- in CMSC330; or must be in the
+      (Computer Science (Doctoral), Computer Science (Master's)) program. ",
+      "Restriction: Permission of CMNS-Computer Science department."
+    ],
+    "description": "Programming language technologies (e.g., object-oriented
+    programming), their implementations and use in software design and
+    implementation.",
+    "sections": [
+      {
+        "holdfile": 0,
+        "meetings": [
+          "TuTh-11:00am-12:15pm-CSI-1115"
+        ],
+        "sec_code": "0101",
+        "waitlist": 3,
+        "open_seats": 0,
+        "course_code": "CMSC433",
+        "instructors": [
+          "Anwar Mamat"
+        ],
+        "total_seats": 140
+      },
+      {
+        "holdfile": null,
+        "meetings": [
+          "TuTh-3:30pm-4:45pm-IRB-0318"
+        ],
+        "sec_code": "0201",
+        "waitlist": 0,
+        "open_seats": 7,
+        "course_code": "CMSC433",
+        "instructors": [
+          "Anwar Mamat"
+        ],
+        "total_seats": 50
+      }
+    ]
   }
 ]
 ```

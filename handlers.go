@@ -213,6 +213,11 @@ func (client SupabaseClient) handleMinifiedCourses(ctx *gin.Context) {
 	client.getCoursesAndSendResponse(ctx, []string{"course_code", "name"}, path)
 }
 
+func (client SupabaseClient) handleCoursesWithSections(ctx *gin.Context) {
+	path := "v0/courses/withSections"
+	client.getCoursesAndSendResponse(ctx, []string{"*", "sections(*)"}, path)
+}
+
 // Get a list of sections for a given course.
 func (client SupabaseClient) handleGetSections(ctx *gin.Context) {
 	path := "v0/sections"
