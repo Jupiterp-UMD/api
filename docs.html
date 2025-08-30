@@ -51,6 +51,11 @@
         <td style="text-align:left">Get a list of instructors and their ratings</td>
         <td style="text-align:left"><a href="#-v0-instructors-">jump</a></td>
         </tr>
+        <tr>
+        <td style="text-align:left"><code>/v0/instructors/active</code></td>
+        <td style="text-align:left">Get a list of instructors actively teaching a course</td>
+        <td style="text-align:left"><a href="#-v0-instructors-active-">jump</a></td>
+        </tr>
         </tbody>
         </table>
         <h3 id="-v0-"><code>/v0/</code></h3>
@@ -541,7 +546,7 @@
         <tbody>
         <tr>
         <td style="text-align:left"><code>instructorNames</code> (optional)</td>
-        <td style="text-align:left">A comma-separated list of instructor names to get results for</td>
+        <td style="text-align:left">A comma-separated list of instructor names to get results for. Cannot set both <code>instructorNames</code> and <code>instructorSlugs</code>.</td>
         <td style="text-align:left"><code>instructorNames=Testudo%20Terrapin,Darryll%20Pines</code></td>
         </tr>
         <tr>
@@ -627,6 +632,44 @@
             <span class="hljs-attr">"slug"</span>: <span class="hljs-string">"zomback"</span>,
             <span class="hljs-attr">"name"</span>: <span class="hljs-string">"Jenna Zomback"</span>,
             <span class="hljs-attr">"average_rating"</span>: <span class="hljs-number">4.9355</span>
+        }
+        ]
+        </code></pre><h3 id="-v0-instructors-active-"><code>/v0/instructors/active</code></h3>
+        <p><a href="#endpoints">(back to endpoints)</a></p>
+        <p>Get all instructors that are currently teaching a course, as listed on Testudo.</p>
+        <h4 id="query-parameters">Query Parameters</h4>
+        <p>Same as <code>/v0/instructors</code>; see <a href="#-v0-instructors-">here</a>.</p>
+        <h4 id="output">Output</h4>
+        <p>Same as <code>/v0/instructors</code>; see <a href="#-v0-instructors-">here</a>.</p>
+        <h4 id="examples">Examples</h4>
+        <h5 id="getting-instructors-currently-teaching-a-course">Getting instructors currently teaching a course</h5>
+        <p>Request: <code>GET http://api.jupiterp.com/v0/instructors/active?limit=5</code></p>
+        <p>Response:</p>
+        <pre><code>[
+        {
+            <span class="hljs-attr">"slug"</span>: <span class="hljs-string">"abadi_daniel"</span>,
+            <span class="hljs-attr">"name"</span>: <span class="hljs-string">"Daniel Abadi"</span>,
+            <span class="hljs-attr">"average_rating"</span>: <span class="hljs-number">3.122</span>
+        },
+        {
+            <span class="hljs-attr">"slug"</span>: <span class="hljs-string">"abasi"</span>,
+            <span class="hljs-attr">"name"</span>: <span class="hljs-string">"Ali Abasi"</span>,
+            <span class="hljs-attr">"average_rating"</span>: <span class="hljs-literal">null</span>
+        },
+        {
+            <span class="hljs-attr">"slug"</span>: <span class="hljs-string">"abbasi"</span>,
+            <span class="hljs-attr">"name"</span>: <span class="hljs-string">"Hossein Abbasi"</span>,
+            <span class="hljs-attr">"average_rating"</span>: <span class="hljs-number">3.7791</span>
+        },
+        {
+            <span class="hljs-attr">"slug"</span>: <span class="hljs-string">"abdul-alim"</span>,
+            <span class="hljs-attr">"name"</span>: <span class="hljs-string">"Jamaal Abdul-Alim"</span>,
+            <span class="hljs-attr">"average_rating"</span>: <span class="hljs-number">3.25</span>
+        },
+        {
+            <span class="hljs-attr">"slug"</span>: <span class="hljs-string">"abioye"</span>,
+            <span class="hljs-attr">"name"</span>: <span class="hljs-string">"Victor Abioye"</span>,
+            <span class="hljs-attr">"average_rating"</span>: <span class="hljs-literal">null</span>
         }
         ]
         </code></pre>

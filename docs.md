@@ -18,6 +18,7 @@ Feel free to view or contribute to the project [on GitHub](https://www.github.co
 | `/v0/courses/withSections` | Get a list of courses, including section data for each course | [jump](#-v0-courses-withsections-) |
 | `/v0/sections` | Get a list of sections for courses | [jump](#-v0-sections-) |
 | `/v0/instructors` | Get a list of instructors and their ratings | [jump](#-v0-instructors-) |
+| `/v0/instructors/active` | Get a list of instructors actively teaching a course | [jump](#-v0-instructors-active-) |
 
 ### `/v0/` 
 
@@ -360,7 +361,7 @@ Get a list of all instructors and their average ratings, including instructors n
 
 | param | description | example |
 |:--|:--|:--|
-| `instructorNames` (optional) | A comma-separated list of instructor names to get results for | `instructorNames=Testudo%20Terrapin,Darryll%20Pines` |
+| `instructorNames` (optional) | A comma-separated list of instructor names to get results for. Cannot set both `instructorNames` and `instructorSlugs`. | `instructorNames=Testudo%20Terrapin,Darryll%20Pines` |
 | `instructorSlugs` (optional) | A comma-separated list of instructor slugs to get results for; slugs are the internal identifier used to distinguish an instructor and are unique to each instructor. See PlanetTerp API spec for more info. Cannot set both `instructorNames` and `instructorSlugs`. | `instructorSlugs=testudo,pines` |
 | `ratings` (optional) | A string of equalities/inequalities to filter instructors by their average rating on PlanetTerp. Possible equality/inequality expressions are: eq, lte, lt, gt, gte, neq (for equal to, less than or equal to, less than, etc.). For multiple conditions, use multiple ratings arguments. | `ratings=gt.3.14&ratings=lt.5` |
 | `limit` (optional) | The number of results to return. Defaults to 100, maximum of 500. | `limit=10`|
@@ -408,6 +409,57 @@ Response:
     "slug": "zomback",
     "name": "Jenna Zomback",
     "average_rating": 4.9355
+  }
+]
+```
+
+### `/v0/instructors/active`
+
+[(back to endpoints)](#endpoints)
+
+Get all instructors that are currently teaching a course, as listed on Testudo.
+
+#### Query Parameters
+
+Same as `/v0/instructors`; see [here](#-v0-instructors-).
+
+#### Output
+
+Same as `/v0/instructors`; see [here](#-v0-instructors-).
+
+#### Examples
+
+##### Getting instructors currently teaching a course
+
+Request: `GET http://api.jupiterp.com/v0/instructors/active?limit=5`
+
+Response:
+```
+[
+  {
+    "slug": "abadi_daniel",
+    "name": "Daniel Abadi",
+    "average_rating": 3.122
+  },
+  {
+    "slug": "abasi",
+    "name": "Ali Abasi",
+    "average_rating": null
+  },
+  {
+    "slug": "abbasi",
+    "name": "Hossein Abbasi",
+    "average_rating": 3.7791
+  },
+  {
+    "slug": "abdul-alim",
+    "name": "Jamaal Abdul-Alim",
+    "average_rating": 3.25
+  },
+  {
+    "slug": "abioye",
+    "name": "Victor Abioye",
+    "average_rating": null
   }
 ]
 ```

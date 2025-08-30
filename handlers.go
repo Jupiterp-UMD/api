@@ -217,6 +217,30 @@ func (client SupabaseClient) getCoursesAndSendResponse(
 	streamResponseToCaller(ctx, res, path)
 }
 
+// General method for getting instructors and sending the response to the caller.
+func (client SupabaseClient) getInstructorsAndSendResponse(
+	ctx *gin.Context, path string, table string) {
+	var args InstructorArgs
+	if err := ctx.ShouldBindQuery(&args); err != nil {
+		sendInvalidArgsError(ctx, reflect.TypeOf(args), path, err)
+		return
+	}
+	if args.InstructorNames != "" && args.InstructorSlugs != "" {
+		sendInvalidArgsError(ctx, reflect.TypeOf(args), path, errors.New("cannot specify both instructorNames and instructorSlugs"))
+		return
+	}
+	args.setDefaults()
+
+	// Get data from DB
+	res, err := client.getInstructors(args, table)
+	if err != nil {
+		sendInternalError(ctx, path, err)
+		return
+	}
+
+	streamResponseToCaller(ctx, res, path)
+}
+
 /* =============================== HANDLERS ================================ */
 
 // Docs endpoint
@@ -272,20 +296,11 @@ func (client SupabaseClient) handleGetSections(ctx *gin.Context) {
 // Get a list of instructors with their ratings.
 func (client SupabaseClient) handleGetInstructors(ctx *gin.Context) {
 	path := "v0/instructors"
+	client.getInstructorsAndSendResponse(ctx, path, "instructors")
+}
 
-	var args InstructorArgs
-	if err := ctx.ShouldBindQuery(&args); err != nil {
-		sendInvalidArgsError(ctx, reflect.TypeOf(args), path, err)
-		return
-	}
-	args.setDefaults()
-
-	// Get data from DB
-	res, err := client.getInstructors(args)
-	if err != nil {
-		sendInternalError(ctx, path, err)
-		return
-	}
-
-	streamResponseToCaller(ctx, res, path)
+// Get a list of instructors currently teaching courses.
+func (client SupabaseClient) handleGetActiveInstructors(ctx *gin.Context) {
+	path := "v0/instructors/active"
+	client.getInstructorsAndSendResponse(ctx, path, "active_instructors")
 }

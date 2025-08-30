@@ -36,16 +36,6 @@ func (s SupabaseClient) request(table string, params string) (*http.Response, er
 	return http.DefaultClient.Do(req)
 }
 
-// Get a specific course from the `courses` table, without section info.
-func (s SupabaseClient) getSingleCourse(courseCode string) (*http.Response, error) {
-	// SELECT * FROM courses WHERE course_code = `courseCode` LIMIT 1
-	params := url.Values{}
-	params.Set("select", "*")
-	params.Set("course_code", "eq."+courseCode)
-	params.Set("limit", "1")
-	return s.request("courses", params.Encode())
-}
-
 // Get a list of courses, without section info, that match the given args.
 // Returns the columns provided as an argument.
 func (s SupabaseClient) getCourses(args CoursesArgs, columns []string) (*http.Response, error) {
@@ -101,7 +91,7 @@ func (s SupabaseClient) getSections(args SectionsArgs) (*http.Response, error) {
 }
 
 // Get a list of instructors (including inactive ones) and their ratings.
-func (s SupabaseClient) getInstructors(args InstructorArgs) (*http.Response, error) {
+func (s SupabaseClient) getInstructors(args InstructorArgs, table string) (*http.Response, error) {
 	// SELECT * FROM instructors
 	// WHERE instructor_name IN `args.InstructorNames`
 	// AND instructor_slug IN `args.InstructorSlugs`
@@ -124,5 +114,5 @@ func (s SupabaseClient) getInstructors(args InstructorArgs) (*http.Response, err
 	if args.SortBy != "" {
 		params.Set("order", args.SortBy)
 	}
-	return s.request("instructors", params.Encode())
+	return s.request(table, params.Encode())
 }
