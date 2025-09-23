@@ -40,7 +40,9 @@ func (s SupabaseClient) request(table string, params string) (*http.Response, er
 // Returns the columns provided as an argument.
 func (s SupabaseClient) getCourses(args CoursesArgs, columns []string) (*http.Response, error) {
 	// SELECT `columns` FROM courses
-	// WHERE course_code LIKE `args.Prefix`* / WHERE course_code IN `args.CourseCodes`
+	// WHERE course_code LIKE `args.Prefix`*
+	// / WHERE course_code IN `args.CourseCodes`
+	// / WHERE course_code LIKE ____`args.Number`*
 	// AND `args.GenEds` IN gen_eds
 	// AND credits `args.Credits`
 	// OFFSET `args.Offset` LIMIT `args.Limit`
@@ -52,6 +54,8 @@ func (s SupabaseClient) getCourses(args CoursesArgs, columns []string) (*http.Re
 		params.Set("course_code", fmt.Sprintf("in.(%s)", args.CourseCodes))
 	} else if args.Prefix != "" {
 		params.Set("course_code", fmt.Sprintf("like.%s*", args.Prefix))
+	} else if args.Number != "" {
+		params.Set("course_code", fmt.Sprintf("like.____%s*", args.Number))
 	}
 	if args.GenEds != "" {
 		params.Set("gen_eds", fmt.Sprintf("cs.{%s}", args.GenEds))

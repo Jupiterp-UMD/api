@@ -25,6 +25,9 @@ type CoursesArgs struct {
 	// The prefix
 	Prefix string `form:"prefix"`
 
+	// Number prefix
+	Number string `form:"number"`
+
 	// A comma-separated list of GenEd codes to filter courses by.
 	GenEds string `form:"genEds"`
 
@@ -199,9 +202,27 @@ func (client SupabaseClient) getCoursesAndSendResponse(
 		sendInvalidArgsError(ctx, reflect.TypeOf(args), path, err)
 		return
 	}
+	if args.CourseCodes != "" && args.Prefix != "" && args.Number != "" {
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"error": "Cannot specify courseCodes, prefix, and number simultaneously",
+		})
+		return
+	}
 	if args.CourseCodes != "" && args.Prefix != "" {
 		ctx.JSON(http.StatusBadRequest, gin.H{
 			"error": "Cannot specify both courseCodes and prefix",
+		})
+		return
+	}
+	if args.CourseCodes != "" && args.Number != "" {
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"error": "Cannot specify both courseCodes and number",
+		})
+		return
+	}
+	if args.Prefix != "" && args.Number != "" {
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"error": "Cannot specify both prefix and number",
 		})
 		return
 	}
