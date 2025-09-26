@@ -325,3 +325,17 @@ func (client SupabaseClient) handleGetActiveInstructors(ctx *gin.Context) {
 	path := "v0/instructors/active"
 	client.getInstructorsAndSendResponse(ctx, path, "active_instructors")
 }
+
+// Get a list of all 4-letter department codes.
+func (client SupabaseClient) handleGetDepartments(ctx *gin.Context) {
+	path := "v0/deptList"
+
+	// Get data from DB
+	res, err := client.getDepartments()
+	if err != nil {
+		sendInternalError(ctx, path, err)
+		return
+	}
+
+	streamResponseToCaller(ctx, res, path)
+}

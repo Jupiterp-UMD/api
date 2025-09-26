@@ -19,6 +19,7 @@ Feel free to view or contribute to the project [on GitHub](https://www.github.co
 | `/v0/sections` | Get a list of sections for courses | [jump](#-v0-sections-) |
 | `/v0/instructors` | Get a list of instructors and their ratings | [jump](#-v0-instructors-) |
 | `/v0/instructors/active` | Get a list of instructors actively teaching a course | [jump](#-v0-instructors-active-) |
+| `/v0/deptList` | Get a list of 4-letter department codes | [jump](#-v0-deptlist-) |
 
 ### `/v0/` 
 
@@ -464,3 +465,19 @@ Response:
   }
 ]
 ```
+
+### `/v0/deptList`
+
+[(back to endpoints)](#endpoints)
+
+Get a list of 4-letter department codes.
+
+#### Query parameters
+
+None
+
+#### Output
+
+| field | type | description |
+| :-- | :--: | :-- |
+| `dept_code` | string | A unique 4-letter department code |

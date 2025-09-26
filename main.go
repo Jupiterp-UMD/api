@@ -64,9 +64,11 @@ func main() {
 	v0 := r.Group("/v0")
 	v0.GET("/", client.handleBaseEndpoint) // base v0 endpoint
 
-	v0.GET("/courses", client.handleGetCourses)                      // full courses
-	v0.GET("/courses/minified", client.handleMinifiedCourses)        // minified courses
-	v0.GET("courses/withSections", client.handleCoursesWithSections) // courses with sections
+	v0.GET("/courses", client.handleGetCourses)                       // full courses
+	v0.GET("/courses/minified", client.handleMinifiedCourses)         // minified courses
+	v0.GET("/courses/withSections", client.handleCoursesWithSections) // courses with sections
+
+	v0.GET("/deptList", client.handleGetDepartments) // list of all 4-letter department codes
 
 	v0.GET("/sections", client.handleGetSections) // sections for courses
 

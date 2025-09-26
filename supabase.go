@@ -120,3 +120,13 @@ func (s SupabaseClient) getInstructors(args InstructorArgs, table string) (*http
 	}
 	return s.request(table, params.Encode())
 }
+
+// Get a list of all 4-letter department codes.
+func (s SupabaseClient) getDepartments() (*http.Response, error) {
+	// SELECT * FROM dept_codes
+	// ORDER BY dept_code
+	params := url.Values{}
+	params.Set("select", "*")
+	params.Set("order", "dept_code")
+	return s.request("dept_codes", params.Encode())
+}

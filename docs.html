@@ -56,6 +56,11 @@
         <td style="text-align:left">Get a list of instructors actively teaching a course</td>
         <td style="text-align:left"><a href="#-v0-instructors-active-">jump</a></td>
         </tr>
+        <tr>
+        <td style="text-align:left"><code>/v0/deptList</code></td>
+        <td style="text-align:left">Get a list of 4-letter department codes</td>
+        <td style="text-align:left"><a href="#-v0-deptlist-">jump</a></td>
+        </tr>
         </tbody>
         </table>
         <h3 id="-v0-"><code>/v0/</code></h3>
@@ -677,5 +682,27 @@
             <span class="hljs-attr">"average_rating"</span>: <span class="hljs-literal">null</span>
         }
         ]
-        </code></pre>
+        </code></pre><h3 id="-v0-deptlist-"><code>/v0/deptList</code></h3>
+        <p><a href="#endpoints">(back to endpoints)</a></p>
+        <p>Get a list of 4-letter department codes.</p>
+        <h4 id="query-parameters">Query parameters</h4>
+        <p>None</p>
+        <h4 id="output">Output</h4>
+        <table>
+        <thead>
+        <tr>
+        <th style="text-align:left">field</th>
+        <th style="text-align:center">type</th>
+        <th style="text-align:left">description</th>
+        </tr>
+        </thead>
+        <tbody>
+        <tr>
+        <td style="text-align:left"><code>dept_code</code></td>
+        <td style="text-align:center">string</td>
+        <td style="text-align:left">A unique 4-letter department code</td>
+        </tr>
+        </tbody>
+        </table>
+
 </html>
