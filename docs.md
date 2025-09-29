@@ -481,3 +481,4 @@ None
 | field | type | description |
 | :-- | :--: | :-- |
 | `dept_code` | string | A unique 4-letter department code |
+| `name` | string | The name of the department |
