@@ -123,10 +123,10 @@ func (s SupabaseClient) getInstructors(args InstructorArgs, table string) (*http
 
 // Get a list of all 4-letter department codes.
 func (s SupabaseClient) getDepartments() (*http.Response, error) {
-	// SELECT * FROM dept_codes
+	// SELECT * FROM departments
 	// ORDER BY dept_code
 	params := url.Values{}
 	params.Set("select", "*")
 	params.Set("order", "dept_code")
-	return s.request("dept_codes", params.Encode())
+	return s.request("departments", params.Encode())
 }
