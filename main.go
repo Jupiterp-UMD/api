@@ -46,20 +46,7 @@ func main() {
 	// Initialize Gin instance and middleware
 	r := gin.New()
 	r.Use(gin.Recovery())
-	corsConfig := cors.DefaultConfig()
-	corsConfig.AllowOrigins = []string{
-		"https://jupiterp.com",
-		"https://www.jupiterp.com",
-		"http://localhost:5173", // for local testing with frontend
-	}
-	corsConfig.AllowCredentials = true
-	corsConfig.AllowHeaders = []string{
-		"Origin",
-		"Authorization",
-		"Content-Type",
-		"Accept",
-	}
-	r.Use(cors.New(corsConfig))
+	r.Use(cors.Default()) // default CORS config allows all origins
 	// TODO: Add logger, auth with keys
 
 	// Create SupabaseClient to connect with DB

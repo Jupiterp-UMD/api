@@ -200,12 +200,20 @@ func buildCacheKey(r *http.Request) string {
 
 func writePayload(ctx *gin.Context, payload *cachedPayload, path string) bool {
 	header := ctx.Writer.Header()
+	replacedKeys := make(map[string]struct{}, len(payload.header))
+	for k := range payload.header {
+		replacedKeys[http.CanonicalHeaderKey(k)] = struct{}{}
+	}
 	for k := range header {
-		header.Del(k)
+		if _, shouldReplace := replacedKeys[k]; shouldReplace {
+			header.Del(k)
+		}
 	}
 	for k, values := range payload.header {
+		canonicalKey := http.CanonicalHeaderKey(k)
+		header.Del(canonicalKey)
 		for _, v := range values {
-			header.Add(k, v)
+			header.Add(canonicalKey, v)
 		}
 	}
 	ctx.Status(payload.status)
