@@ -7,10 +7,19 @@ import (
 	"log"
 	"net/http"
 	"reflect"
+	"sort"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
+)
+
+const (
+	coursesTTL     time.Duration = 2 * time.Hour
+	instructorsTTL time.Duration = 12 * time.Hour
+	departmentsTTL time.Duration = 2 * time.Hour
+	sectionsTTL    time.Duration = 15 * time.Minute
 )
 
 /* ================================= ARGS ================================== */
@@ -168,34 +177,90 @@ func sendInternalError(ctx *gin.Context, path string, err error) {
 	})
 }
 
-// Stream a response from DB back to the API caller.
-func streamResponseToCaller(ctx *gin.Context, res *http.Response, path string) {
-	defer res.Body.Close()
-	for k, vv := range res.Header {
-		switch http.CanonicalHeaderKey(k) {
-		case "Connection", "Keep-Alive", "Proxy-Authenticate", "Proxy-Authorization",
-			"Te", "Trailers", "Transfer-Encoding", "Upgrade":
+func buildCacheKey(r *http.Request) string {
+	base := r.Method + ":" + r.URL.Path
+	rawQuery := r.URL.RawQuery
+	if rawQuery == "" {
+		return base
+	}
+	parts := strings.Split(rawQuery, "&")
+	filtered := parts[:0]
+	for _, part := range parts {
+		if part == "" {
 			continue
-		default:
-			for _, v := range vv {
-				ctx.Writer.Header().Add(k, v)
-			}
+		}
+		filtered = append(filtered, part)
+	}
+	if len(filtered) == 0 {
+		return base
+	}
+	sort.Strings(filtered)
+	return base + "?" + strings.Join(filtered, "&")
+}
+
+func writePayload(ctx *gin.Context, payload *cachedPayload, path string) bool {
+	header := ctx.Writer.Header()
+	for k := range header {
+		header.Del(k)
+	}
+	for k, values := range payload.header {
+		for _, v := range values {
+			header.Add(k, v)
 		}
 	}
-	ctx.Status(res.StatusCode)
-	if _, err := io.Copy(ctx.Writer, res.Body); err != nil {
-		// client aborted or network issue; nothing else to do safely
+	ctx.Status(payload.status)
+	if _, err := ctx.Writer.Write(payload.body); err != nil {
 		_ = ctx.Error(err)
 		log.Printf("Unexpected error occurred while streaming response to caller of %s: %s", path, err)
-		return
+		return false
+	}
+	return true
+}
+
+func buildPayloadFromResponse(res *http.Response) (*cachedPayload, error) {
+	defer res.Body.Close()
+	body, err := io.ReadAll(res.Body)
+	if err != nil {
+		return nil, err
+	}
+	return &cachedPayload{
+		status: res.StatusCode,
+		header: filterHeadersForCaching(res.Header),
+		body:   body,
+	}, nil
+}
+
+func (client SupabaseClient) serveFromCache(ctx *gin.Context, path, key string) bool {
+	payload, ok := client.cache.Get(key)
+	if !ok {
+		log.Printf("Cache MISS for GET %s with key %s", path, key)
+		return false
+	}
+	if writePayload(ctx, payload, path) {
+		log.Printf("Cache HIT and served GET %s from cache with status %d", path, payload.status)
 	}
 
-	log.Printf("Successfully handled GET %s with status %s", path, res.Status)
+	return true
+}
+
+func (client SupabaseClient) writeAndCacheResponse(ctx *gin.Context, res *http.Response, path, key string, ttl time.Duration) {
+	statusText := res.Status
+	payload, err := buildPayloadFromResponse(res)
+	if err != nil {
+		sendInternalError(ctx, path, err)
+		return
+	}
+	if writePayload(ctx, payload, path) {
+		log.Printf("Successfully handled GET %s with status %s", path, statusText)
+	}
+	if res.StatusCode < http.StatusInternalServerError {
+		client.cache.Set(key, payload, ttl)
+	}
 }
 
 // General method for getting courses and sending the response to the caller.
 func (client SupabaseClient) getCoursesAndSendResponse(
-	ctx *gin.Context, columns []string, path string) {
+	ctx *gin.Context, columns []string, path string, ttl time.Duration) {
 	// Parse args
 	var args CoursesArgs
 	if err := ctx.ShouldBindQuery(&args); err != nil {
@@ -228,6 +293,11 @@ func (client SupabaseClient) getCoursesAndSendResponse(
 	}
 	args.setDefaults()
 
+	key := buildCacheKey(ctx.Request)
+	if client.serveFromCache(ctx, path, key) {
+		return
+	}
+
 	// Get data from DB
 	res, err := client.getCourses(args, columns)
 	if err != nil {
@@ -235,12 +305,12 @@ func (client SupabaseClient) getCoursesAndSendResponse(
 		return
 	}
 
-	streamResponseToCaller(ctx, res, path)
+	client.writeAndCacheResponse(ctx, res, path, key, ttl)
 }
 
 // General method for getting instructors and sending the response to the caller.
 func (client SupabaseClient) getInstructorsAndSendResponse(
-	ctx *gin.Context, path string, table string) {
+	ctx *gin.Context, path string, table string, ttl time.Duration) {
 	var args InstructorArgs
 	if err := ctx.ShouldBindQuery(&args); err != nil {
 		sendInvalidArgsError(ctx, reflect.TypeOf(args), path, err)
@@ -252,6 +322,11 @@ func (client SupabaseClient) getInstructorsAndSendResponse(
 	}
 	args.setDefaults()
 
+	key := buildCacheKey(ctx.Request)
+	if client.serveFromCache(ctx, path, key) {
+		return
+	}
+
 	// Get data from DB
 	res, err := client.getInstructors(args, table)
 	if err != nil {
@@ -259,7 +334,7 @@ func (client SupabaseClient) getInstructorsAndSendResponse(
 		return
 	}
 
-	streamResponseToCaller(ctx, res, path)
+	client.writeAndCacheResponse(ctx, res, path, key, ttl)
 }
 
 /* =============================== HANDLERS ================================ */
@@ -278,19 +353,19 @@ func (client SupabaseClient) handleBaseEndpoint(ctx *gin.Context) {
 // Example: /v0/courses/?limit=10&offset=50&prefix=CMSC
 func (client SupabaseClient) handleGetCourses(ctx *gin.Context) {
 	path := "v0/courses"
-	client.getCoursesAndSendResponse(ctx, []string{"*"}, path)
+	client.getCoursesAndSendResponse(ctx, []string{"*"}, path, coursesTTL)
 }
 
 // Get a minified list of courses. Returns only the course code and title.
 // Same arguments as `handleGetCourses`.
 func (client SupabaseClient) handleMinifiedCourses(ctx *gin.Context) {
 	path := "v0/courses/minified"
-	client.getCoursesAndSendResponse(ctx, []string{"course_code", "name"}, path)
+	client.getCoursesAndSendResponse(ctx, []string{"course_code", "name"}, path, coursesTTL)
 }
 
 func (client SupabaseClient) handleCoursesWithSections(ctx *gin.Context) {
 	path := "v0/courses/withSections"
-	client.getCoursesAndSendResponse(ctx, []string{"*", "sections(*)"}, path)
+	client.getCoursesAndSendResponse(ctx, []string{"*", "sections(*)"}, path, sectionsTTL)
 }
 
 // Get a list of sections for a given course.
@@ -304,6 +379,11 @@ func (client SupabaseClient) handleGetSections(ctx *gin.Context) {
 	}
 	args.setDefaults()
 
+	key := buildCacheKey(ctx.Request)
+	if client.serveFromCache(ctx, path, key) {
+		return
+	}
+
 	// Get data from DB
 	res, err := client.getSections(args)
 	if err != nil {
@@ -311,24 +391,29 @@ func (client SupabaseClient) handleGetSections(ctx *gin.Context) {
 		return
 	}
 
-	streamResponseToCaller(ctx, res, path)
+	client.writeAndCacheResponse(ctx, res, path, key, sectionsTTL)
 }
 
 // Get a list of instructors with their ratings.
 func (client SupabaseClient) handleGetInstructors(ctx *gin.Context) {
 	path := "v0/instructors"
-	client.getInstructorsAndSendResponse(ctx, path, "instructors")
+	client.getInstructorsAndSendResponse(ctx, path, "instructors", instructorsTTL)
 }
 
 // Get a list of instructors currently teaching courses.
 func (client SupabaseClient) handleGetActiveInstructors(ctx *gin.Context) {
 	path := "v0/instructors/active"
-	client.getInstructorsAndSendResponse(ctx, path, "active_instructors")
+	client.getInstructorsAndSendResponse(ctx, path, "active_instructors", instructorsTTL)
 }
 
 // Get a list of all 4-letter department codes.
 func (client SupabaseClient) handleGetDepartments(ctx *gin.Context) {
 	path := "v0/deptList"
+
+	key := buildCacheKey(ctx.Request)
+	if client.serveFromCache(ctx, path, key) {
+		return
+	}
 
 	// Get data from DB
 	res, err := client.getDepartments()
@@ -337,5 +422,5 @@ func (client SupabaseClient) handleGetDepartments(ctx *gin.Context) {
 		return
 	}
 
-	streamResponseToCaller(ctx, res, path)
+	client.writeAndCacheResponse(ctx, res, path, key, departmentsTTL)
 }

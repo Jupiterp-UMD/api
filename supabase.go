@@ -10,8 +10,9 @@ import (
 // A SupabaseClient connects with Supabase and retrieves course, section,
 // or instructor data.
 type SupabaseClient struct {
-	Url string
-	Key string
+	Url   string
+	Key   string
+	cache *LRUCache
 }
 
 // Request data from the `table` with the given query parameters `params`.

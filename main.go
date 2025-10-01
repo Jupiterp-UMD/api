@@ -50,7 +50,11 @@ func main() {
 	// TODO: Add logger, auth with keys
 
 	// Create SupabaseClient to connect with DB
-	client := SupabaseClient{Url: dbUrl, Key: dbKey}
+	client := SupabaseClient{
+		Url:   dbUrl,
+		Key:   dbKey,
+		cache: NewLRUCache(defaultCacheCapacity),
+	}
 
 	/* ========================== STATIC CONTENT =========================== */
 
