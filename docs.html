@@ -311,7 +311,72 @@
         <p><a href="#endpoints">(back to endpoints)</a></p>
         <p>Gets a list of full courses data and associated sections data. Each returned course also contains a (potentially-empty) list of sections for that course.</p>
         <h4 id="query-parameters">Query parameters</h4>
-        <p>Same as the parameters for <code>/v0/courses</code>; see <a href="#-v0-courses-">here</a>.</p>
+        <table>
+        <thead>
+        <tr>
+        <th style="text-align:left">param</th>
+        <th style="text-align:left">description</th>
+        <th style="text-align:left">example</th>
+        </tr>
+        </thead>
+        <tbody>
+        <tr>
+        <td style="text-align:left"><code>courseCodes</code> (optional)</td>
+        <td style="text-align:left">A string of one or multiple comma-separated course codes to fetch course data for; cannot set both <code>courseCodes</code> and <code>prefix</code>.</td>
+        <td style="text-align:left"><code>courseCodes=CMSC132,MATH141</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>prefix</code> (optional)</td>
+        <td style="text-align:left">The course prefix to match records to; for instance, <code>CMSC1</code> would match all CMSC1XX courses (like CMSC131 and CMSC132); cannot set both <code>courseCodes</code> and <code>prefix</code>.</td>
+        <td style="text-align:left"><code>prefix=CMSC1</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>number</code> (optional)</td>
+        <td style="text-align:left">The course number to search for across multiple departments; for instance, <code>433</code> would match to courses like AOSC433, AREC433, etc.</td>
+        <td style="text-align:left"><code>number=433</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>genEds</code> (optional)</td>
+        <td style="text-align:left">A string of one or multiple comma-separated Gen-Eds to filter for; if multiple Gen-Eds are included, the API will return courses that satisfy all listed Gen-Eds.</td>
+        <td style="text-align:left"><code>genEds=DVUP,DSSP</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>credits</code> (optional)</td>
+        <td style="text-align:left">A string of equalities/inequalities to filter courses by how many credits they have. For courses with a range of possible credit values, filters by the minimum number of credits. Possible equality/inequality expressions are: <code>eq</code>, <code>lte</code>, <code>lt</code>, <code>gt</code>, <code>gte</code>, <code>neq</code> (for equal to, less than or equal to, less than, etc.). For multiple conditions, use multiple <code>credits</code> arguments.</td>
+        <td style="text-align:left"><code>credits=gt.1&amp;credits=lt.5</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>totalClassSize</code> (optional)</td>
+        <td style="text-align:left">A string of equalities/inequalities to filter by the total number of seats in a section. Possible expressions are: <code>eq</code>, <code>lte</code>, <code>lt</code>, <code>gt</code>, <code>gte</code>, <code>neq</code> (for equal to, less than or equal to, less than, etc.). For multiple conditions, use multiple <code>totalClassSize</code> arguments.</td>
+        <td style="text-align:left"><code>totalClassSize=gt.40&amp;totalClassSize=le.50</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>onlyOpen</code> (optional)</td>
+        <td style="text-align:left">If set to true, only returns sections with more than zero open seats.</td>
+        <td style="text-align:left"><code>onlyOpen=true</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>instructor</code> (optional)</td>
+        <td style="text-align:left">Return only sections that have the given instructor in the <code>instructors</code> field. This field is case-sensitive.</td>
+        <td style="text-align:left"><code>instructor=Darryll%20Pines</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>limit</code> (optional)</td>
+        <td style="text-align:left">Maximum number of course records to return; defaults to 100, maximum of 500.</td>
+        <td style="text-align:left"><code>limit=10</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>offset</code> (optional)</td>
+        <td style="text-align:left">How many records to skip when returning courses; defaults to 0</td>
+        <td style="text-align:left"><code>offset=10</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>sortBy</code> (optional)</td>
+        <td style="text-align:left">A comma-separated list of which columns to sort by when returning; can be sorted in ascending (<code>.asc</code>) or descending (<code>.desc</code>) order.</td>
+        <td style="text-align:left"><code>sortBy=name.asc,min_credits.desc</code></td>
+        </tr>
+        </tbody>
+        </table>
         <h4 id="output">Output</h4>
         <table>
         <thead>
@@ -724,5 +789,6 @@
         </tr>
         </tbody>
         </table>
+
 
 </html>

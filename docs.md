@@ -212,7 +212,19 @@ Gets a list of full courses data and associated sections data. Each returned cou
 
 #### Query parameters
 
-Same as the parameters for `/v0/courses`; see [here](#-v0-courses-).
+| param | description | example |
+|:--|:--|:--|
+| `courseCodes` (optional) | A string of one or multiple comma-separated course codes to fetch course data for; cannot set both `courseCodes` and `prefix`. | `courseCodes=CMSC132,MATH141` |
+| `prefix` (optional) | The course prefix to match records to; for instance, `CMSC1` would match all CMSC1XX courses (like CMSC131 and CMSC132); cannot set both `courseCodes` and `prefix`. | `prefix=CMSC1` |
+| `number` (optional) | The course number to search for across multiple departments; for instance, `433` would match to courses like AOSC433, AREC433, etc. | `number=433` |
+| `genEds` (optional) | A string of one or multiple comma-separated Gen-Eds to filter for; if multiple Gen-Eds are included, the API will return courses that satisfy all listed Gen-Eds. | `genEds=DVUP,DSSP` |
+| `credits` (optional) | A string of equalities/inequalities to filter courses by how many credits they have. For courses with a range of possible credit values, filters by the minimum number of credits. Possible equality/inequality expressions are: `eq`, `lte`, `lt`, `gt`, `gte`, `neq` (for equal to, less than or equal to, less than, etc.). For multiple conditions, use multiple `credits` arguments. | `credits=gt.1&credits=lt.5` |
+| `totalClassSize` (optional) | A string of equalities/inequalities to filter by the total number of seats in a section. Possible expressions are: `eq`, `lte`, `lt`, `gt`, `gte`, `neq` (for equal to, less than or equal to, less than, etc.). For multiple conditions, use multiple `totalClassSize` arguments. | `totalClassSize=gt.40&totalClassSize=le.50` |
+| `onlyOpen` (optional) | If set to true, only returns sections with more than zero open seats. | `onlyOpen=true` |
+| `instructor` (optional) | Return only sections that have the given instructor in the `instructors` field. This field is case-sensitive. | `instructor=Darryll%20Pines` |
+|`limit` (optional) | Maximum number of course records to return; defaults to 100, maximum of 500. | `limit=10` |
+| `offset` (optional) | How many records to skip when returning courses; defaults to 0 | `offset=10` |
+| `sortBy` (optional) | A comma-separated list of which columns to sort by when returning; can be sorted in ascending (`.asc`) or descending (`.desc`) order. | `sortBy=name.asc,min_credits.desc` |
 
 #### Output
 

@@ -31,10 +31,10 @@ type CoursesArgs struct {
 	// A string of one or multiple comma-separated course codes.
 	CourseCodes string `form:"courseCodes"`
 
-	// The prefix
+	// The course prefix to filter by (ex. CMSC1 for all CMSC1XX courses).
 	Prefix string `form:"prefix"`
 
-	// Number prefix
+	// The number to filter by (ex. 132 for CMSC132).
 	Number string `form:"number"`
 
 	// A comma-separated list of GenEd codes to filter courses by.
@@ -57,6 +57,51 @@ type CoursesArgs struct {
 }
 
 func (c *CoursesArgs) setDefaults() {
+	if c.Limit == 0 {
+		c.Limit = 100
+	}
+}
+
+// Arguments for getting a list of courses WITH section info.
+type CoursesWithSectionsArgs struct {
+	// A string of one or multiple comma-separated course codes.
+	CourseCodes string `form:"courseCodes"`
+
+	// The course prefix to filter by (ex. CMSC1 for all CMSC1XX courses).
+	Prefix string `form:"prefix"`
+
+	// The number to filter by (ex. 132 for CMSC132).
+	Number string `form:"number"`
+
+	// A comma-separated list of GenEd codes to filter courses by.
+	GenEds string `form:"genEds"`
+
+	// Conditions for credits; for example, eq.3
+	Credits []string `form:"credits"`
+
+	// Total class size conditions; for example, lt.30
+	TotalClassSize []string `form:"totalClassSize"`
+
+	// Only open sections if true
+	OnlyOpen bool `form:"onlyOpen"`
+
+	// Instructor name filter (case sensitive, exact contains match)
+	Instructor string `form:"instructor"`
+
+	// Number of courses to return per page.
+	// Default value: 100; Maximum value: 500
+	Limit uint16 `form:"limit" binding:"omitempty,min=1,max=500"`
+
+	// The offset of courses to view. For example, offset=30 will return
+	// courses starting at the 30th result.
+	// Default value: 0
+	Offset uint16 `form:"offset"`
+
+	// String of columns to sort by
+	SortBy string `form:"sortBy"`
+}
+
+func (c *CoursesWithSectionsArgs) setDefaults() {
 	if c.Limit == 0 {
 		c.Limit = 100
 	}
@@ -382,7 +427,37 @@ func (client SupabaseClient) handleMinifiedCourses(ctx *gin.Context) {
 
 func (client SupabaseClient) handleCoursesWithSections(ctx *gin.Context) {
 	path := "v0/courses/withSections"
-	client.getCoursesAndSendResponse(ctx, []string{"*", "sections(*)"}, path, sectionsTTL)
+
+	var args CoursesWithSectionsArgs
+	if err := ctx.ShouldBindQuery(&args); err != nil {
+		sendInvalidArgsError(ctx, reflect.TypeOf(args), path, err)
+		return
+	}
+	if (args.CourseCodes != "" && args.Prefix != "" && args.Number != "") ||
+		(args.CourseCodes != "" && args.Prefix != "") ||
+		(args.CourseCodes != "" && args.Number != "") ||
+		(args.Prefix != "" && args.Number != "") {
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"error": "Cannot specify courseCodes, prefix, and number simultaneously",
+		})
+		return
+	}
+
+	args.setDefaults()
+
+	key := buildCacheKey(ctx.Request)
+	if client.serveFromCache(ctx, path, key) {
+		return
+	}
+
+	// Get data from DB
+	res, err := client.getCoursesWithSections(args)
+	if err != nil {
+		sendInternalError(ctx, path, err)
+		return
+	}
+
+	client.writeAndCacheResponse(ctx, res, path, key, sectionsTTL)
 }
 
 // Get a list of sections for a given course.

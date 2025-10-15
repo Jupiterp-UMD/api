@@ -79,7 +79,7 @@ func (s SupabaseClient) getSections(args SectionsArgs) (*http.Response, error) {
 	// AND credits `args.Credits`
 	// AND total_seats `args.TotalClassSize`
 	// AND open_seats > 0 (if `args.OnlyOpen` is true)
-	// AND `args.HasInstructor` = ANY(instructors)
+	// AND `args.Instructor` = ANY(instructors)
 	// OFFSET `args.Offset` LIMIT `args.Limit`
 	// SORT BY `args.SortBy`
 	params := url.Values{}
@@ -107,6 +107,60 @@ func (s SupabaseClient) getSections(args SectionsArgs) (*http.Response, error) {
 		params.Set("instructors", fmt.Sprintf("cs.{%s}", args.Instructor))
 	}
 	return s.request("sections", params.Encode())
+}
+
+func (s SupabaseClient) getCoursesWithSections(args CoursesWithSectionsArgs) (*http.Response, error) {
+	// SELECT * FROM courses
+	// INNER JOIN sections ON courses.course_code = sections.course_code
+	// AND sections.total_seats `args.TotalClassSize`
+	// AND sections.open_seats > 0 (if `args.OnlyOpen` is true)
+	// AND sections.`args.Instructor` = ANY(instructors)`
+	// WHERE course_code LIKE `args.Prefix`*
+	// / WHERE course_code IN `args.CourseCodes`
+	// / WHERE course_code LIKE ____`args.Number`*
+	// AND `args.GenEds` IN gen_eds
+	// AND credits `args.Credits`
+	// OFFSET `args.Offset` LIMIT `args.Limit`
+	// SORT BY `args.SortBy`
+
+	params := url.Values{}
+	selectStr := "*,sections"
+	if args.TotalClassSize != nil || args.OnlyOpen || args.Instructor != "" {
+		selectStr += "!inner(*)"
+	} else {
+		selectStr += "(*)"
+	}
+	if args.TotalClassSize != nil {
+		for _, cond := range args.TotalClassSize {
+			params.Add("sections.total_seats", cond)
+		}
+	}
+	if args.OnlyOpen {
+		params.Add("sections.open_seats", "gt.0")
+	}
+	if args.Instructor != "" {
+		params.Set("sections.instructors", fmt.Sprintf("cs.{%s}", args.Instructor))
+	}
+	params.Set("select", selectStr)
+	if args.CourseCodes != "" {
+		params.Set("course_code", fmt.Sprintf("in.(%s)", args.CourseCodes))
+	} else if args.Prefix != "" {
+		params.Set("course_code", fmt.Sprintf("like.%s*", args.Prefix))
+	} else if args.Number != "" {
+		params.Set("course_code", fmt.Sprintf("like.____%s*", args.Number))
+	}
+	if args.GenEds != "" {
+		params.Set("gen_eds", fmt.Sprintf("cs.{%s}", args.GenEds))
+	}
+	for _, cond := range args.Credits {
+		params.Add("min_credits", cond)
+	}
+	params.Set("offset", fmt.Sprintf("%d", args.Offset))
+	params.Set("limit", fmt.Sprintf("%d", args.Limit))
+	if args.SortBy != "" {
+		params.Set("order", args.SortBy)
+	}
+	return s.request("courses", params.Encode())
 }
 
 // Get a list of instructors (including inactive ones) and their ratings.
