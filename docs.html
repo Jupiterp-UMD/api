@@ -439,6 +439,21 @@
         <td style="text-align:left"><code>prefix=CMSC1</code></td>
         </tr>
         <tr>
+        <td style="text-align:left"><code>totalClassSize</code> (optional)</td>
+        <td style="text-align:left">A string of equalities/inequalities to filter by the total number of seats in a section. Possible expressions are: <code>eq</code>, <code>lte</code>, <code>lt</code>, <code>gt</code>, <code>gte</code>, <code>neq</code> (for equal to, less than or equal to, less than, etc.). For multiple conditions, use multiple <code>totalClassSize</code> arguments.</td>
+        <td style="text-align:left"><code>totalClassSize=gt.40&amp;totalClassSize=le.50</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>onlyOpen</code> (optional)</td>
+        <td style="text-align:left">If set to true, only returns sections with more than zero open seats.</td>
+        <td style="text-align:left"><code>onlyOpen=true</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>instructor</code> (optional)</td>
+        <td style="text-align:left">Return only sections that have the given instructor in the <code>instructors</code> field. This field is case-sensitive.</td>
+        <td style="text-align:left"><code>instructor=Darryll%20Pines</code></td>
+        </tr>
+        <tr>
         <td style="text-align:left"><code>limit</code> (optional)</td>
         <td style="text-align:left">Maximum number of course records to return; defaults to 100, maximum of 500.</td>
         <td style="text-align:left"><code>limit=10</code></td>
@@ -705,7 +720,7 @@
         <tr>
         <td style="text-align:left"><code>name</code></td>
         <td style="text-align:center">string</td>
-        <td style="text-align:left">The full name of the department</td>
+        <td style="text-align:left">The name of the department</td>
         </tr>
         </tbody>
         </table>

@@ -77,6 +77,9 @@ func (s SupabaseClient) getSections(args SectionsArgs) (*http.Response, error) {
 	// SELECT * FROM sections
 	// WHERE course_code IN `args.CourseCodes` / WHERE course_code LIKE `args.CoursePrefix`*
 	// AND credits `args.Credits`
+	// AND total_seats `args.TotalClassSize`
+	// AND open_seats > 0 (if `args.OnlyOpen` is true)
+	// AND `args.HasInstructor` = ANY(instructors)
 	// OFFSET `args.Offset` LIMIT `args.Limit`
 	// SORT BY `args.SortBy`
 	params := url.Values{}
@@ -91,6 +94,17 @@ func (s SupabaseClient) getSections(args SectionsArgs) (*http.Response, error) {
 	params.Set("limit", fmt.Sprintf("%d", args.Limit))
 	if args.SortBy != "" {
 		params.Set("order", args.SortBy)
+	}
+	if args.TotalClassSize != nil {
+		for _, cond := range args.TotalClassSize {
+			params.Add("total_seats", cond)
+		}
+	}
+	if args.OnlyOpen {
+		params.Add("open_seats", "gt.0")
+	}
+	if args.Instructor != "" {
+		params.Set("instructors", fmt.Sprintf("cs.{%s}", args.Instructor))
 	}
 	return s.request("sections", params.Encode())
 }

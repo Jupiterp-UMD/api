@@ -82,6 +82,15 @@ type SectionsArgs struct {
 
 	// String of columns to sort by
 	SortBy string `form:"sortBy"`
+
+	// Total class size conditions; for example, lt.30
+	TotalClassSize []string `form:"totalClassSize"`
+
+	// Only open sections if true
+	OnlyOpen bool `form:"onlyOpen"`
+
+	// Instructor name filter (case sensitive, exact contains match)
+	Instructor string `form:"instructor"`
 }
 
 func (s *SectionsArgs) setDefaults() {
