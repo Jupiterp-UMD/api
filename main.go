@@ -79,6 +79,10 @@ func main() {
 	v0.GET("/instructors", client.handleGetInstructors)              // all instructors with ratings
 	v0.GET("/instructors/active", client.handleGetActiveInstructors) // all instructors currently teaching
 
+	v0.GET("/grades", client.handleGetGrades)               // section-level grade distributions
+	v0.GET("/grades/summary", client.handleGetGradeSummary) // grades aggregated by course, term, or instructor
+	v0.GET("/grades/terms", client.handleGetGradeTerms)     // terms for which grade data exists
+
 	// Listen and serve on defined port
 	log.Printf("Listening on port %s", port)
 	r.Run(":" + port)

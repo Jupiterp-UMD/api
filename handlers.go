@@ -20,7 +20,24 @@ const (
 	instructorsTTL time.Duration = 12 * time.Hour
 	departmentsTTL time.Duration = 2 * time.Hour
 	sectionsTTL    time.Duration = 15 * time.Minute
+	// Grade data changes once a term, when a new records request is fulfilled.
+	gradesTTL time.Duration = 12 * time.Hour
 )
+
+// Views backing the /v0/grades/summary endpoint, selected by `groupBy`.
+const (
+	gradeSummaryByCourseTable     = "course_grades"
+	gradeSummaryByTermTable       = "course_term_grades"
+	gradeSummaryByInstructorTable = "course_instructor_grades"
+	// As above, but also counting sections whose instructor was carried across
+	// lecture groups rather than within one. See `instructor_source`.
+	gradeSummaryByInstructorAllTable = "course_instructor_grades_all"
+)
+
+func isInstructorSummary(table string) bool {
+	return table == gradeSummaryByInstructorTable ||
+		table == gradeSummaryByInstructorAllTable
+}
 
 /* ================================= ARGS ================================== */
 // For all argument structs, the first character of a field must be upper-case
@@ -174,7 +191,140 @@ func (i *InstructorArgs) setDefaults() {
 	}
 }
 
+// Arguments for getting section-level grade distributions.
+type GradesArgs struct {
+	// A string of one or multiple comma-separated course codes.
+	CourseCodes string `form:"courseCodes"`
+
+	// The course prefix to filter by (ex. CMSC1 for all CMSC1XX courses).
+	Prefix string `form:"prefix"`
+
+	// The number to filter by (ex. 132 for CMSC132).
+	Number string `form:"number"`
+
+	// Conditions for the term code; for example, gte.202008. For a specific
+	// set of terms, in.(202408,202501).
+	Terms []string `form:"term"`
+
+	// Instructor name filter, in "First Last" order (case sensitive, exact).
+	Instructor string `form:"instructor"`
+
+	// A comma-separated list of instructor_source values to include; defaults
+	// to every row. Use reported,lead to exclude attributions carried across
+	// lecture groups.
+	InstructorSource string `form:"instructorSource"`
+
+	// Conditions for GPA; for example, gte.3.5
+	Gpa []string `form:"gpa"`
+
+	// Conditions for the number of students who received a letter grade; for
+	// example, gte.30. Useful for excluding sections too small to read
+	// anything into.
+	Graded []string `form:"graded"`
+
+	// Number of records to return per page.
+	// Default value: 100; Maximum value: 500
+	Limit uint16 `form:"limit" binding:"omitempty,min=1,max=500"`
+
+	// The offset of records to view.
+	// Default value: 0
+	Offset uint16 `form:"offset"`
+
+	// String of columns to sort by
+	SortBy string `form:"sortBy"`
+}
+
+func (g *GradesArgs) setDefaults() {
+	if g.Limit == 0 {
+		g.Limit = 100
+	}
+}
+
+// Arguments for getting aggregated grade distributions.
+type GradeSummaryArgs struct {
+	// How to group the results: course (default), term, or instructor.
+	GroupBy string `form:"groupBy" binding:"omitempty,oneof=course term instructor"`
+
+	// When grouping by instructor, also count sections whose instructor was
+	// carried from a different lecture group or a differently-coded offering.
+	// Wider coverage, lower confidence.
+	IncludeCarried bool `form:"includeCarried"`
+
+	// A string of one or multiple comma-separated course codes.
+	CourseCodes string `form:"courseCodes"`
+
+	// The course prefix to filter by (ex. CMSC1 for all CMSC1XX courses).
+	Prefix string `form:"prefix"`
+
+	// The number to filter by (ex. 132 for CMSC132).
+	Number string `form:"number"`
+
+	// Conditions for the term code; only applied when groupBy=term, since the
+	// other groupings are aggregated across every term on file.
+	Terms []string `form:"term"`
+
+	// Instructor name filter, in "First Last" order (case sensitive, exact).
+	// Only applied when groupBy=instructor.
+	Instructor string `form:"instructor"`
+
+	// Conditions for GPA; for example, gte.3.5
+	Gpa []string `form:"gpa"`
+
+	// Exclude groups totalling fewer than this many students.
+	MinStudents uint16 `form:"minStudents"`
+
+	// Number of records to return per page.
+	// Default value: 100; Maximum value: 500
+	Limit uint16 `form:"limit" binding:"omitempty,min=1,max=500"`
+
+	// The offset of records to view.
+	// Default value: 0
+	Offset uint16 `form:"offset"`
+
+	// String of columns to sort by
+	SortBy string `form:"sortBy"`
+}
+
+func (g *GradeSummaryArgs) setDefaults() {
+	if g.Limit == 0 {
+		g.Limit = 100
+	}
+	if g.GroupBy == "" {
+		g.GroupBy = "course"
+	}
+}
+
+// Resolve `groupBy` and `includeCarried` to the view that serves them.
+func (g GradeSummaryArgs) summaryTable() string {
+	switch g.GroupBy {
+	case "term":
+		return gradeSummaryByTermTable
+	case "instructor":
+		if g.IncludeCarried {
+			return gradeSummaryByInstructorAllTable
+		}
+		return gradeSummaryByInstructorTable
+	default:
+		return gradeSummaryByCourseTable
+	}
+}
+
 /* =============================== UTILITIES =============================== */
+
+// Reject requests that set more than one of the mutually exclusive course
+// filters, all of which target the same column.
+func checkCourseFilters(courseCodes, prefix, number string) error {
+	set := 0
+	for _, arg := range []string{courseCodes, prefix, number} {
+		if arg != "" {
+			set++
+		}
+	}
+	if set > 1 {
+		return errors.New("cannot specify more than one of courseCodes, prefix, and number")
+	}
+	return nil
+}
 
 // Takes the error from a failed query argument validation/binding and sends a
 // message to the caller listing any missing or invalid args.
@@ -515,4 +665,86 @@ func (client SupabaseClient) handleGetDepartments(ctx *gin.Context) {
 	}
 
 	client.writeAndCacheResponse(ctx, res, path, key, departmentsTTL)
+}
+
+// Get section-level grade distributions.
+// Example: /v0/grades?courseCodes=CMSC132&term=gte.202008&sortBy=term.desc
+func (client SupabaseClient) handleGetGrades(ctx *gin.Context) {
+	path := "v0/grades"
+
+	var args GradesArgs
+	if err := ctx.ShouldBindQuery(&args); err != nil {
+		sendInvalidArgsError(ctx, reflect.TypeOf(args), path, err)
+		return
+	}
+	if err := checkCourseFilters(args.CourseCodes, args.Prefix, args.Number); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	args.setDefaults()
+
+	key := buildCacheKey(ctx.Request)
+	if client.serveFromCache(ctx, path, key) {
+		return
+	}
+
+	// Get data from DB
+	res, err := client.getGrades(args)
+	if err != nil {
+		sendInternalError(ctx, path, err)
+		return
+	}
+
+	client.writeAndCacheResponse(ctx, res, path, key, gradesTTL)
+}
+
+// Get grade distributions aggregated by course, by course and term, or by
+// course and instructor.
+// Example: /v0/grades/summary?groupBy=instructor&courseCodes=CMSC330&minStudents=100
+func (client SupabaseClient) handleGetGradeSummary(ctx *gin.Context) {
+	path := "v0/grades/summary"
+
+	var args GradeSummaryArgs
+	if err := ctx.ShouldBindQuery(&args); err != nil {
+		sendInvalidArgsError(ctx, reflect.TypeOf(args), path, err)
+		return
+	}
+	if err := checkCourseFilters(args.CourseCodes, args.Prefix, args.Number); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	args.setDefaults()
+
+	key := buildCacheKey(ctx.Request)
+	if client.serveFromCache(ctx, path, key) {
+		return
+	}
+
+	// Get data from DB
+	res, err := client.getGradeSummary(args, args.summaryTable())
+	if err != nil {
+		sendInternalError(ctx, path, err)
+		return
+	}
+
+	client.writeAndCacheResponse(ctx, res, path, key, gradesTTL)
+}
+
+// Get every term for which grade data is available.
+func (client SupabaseClient) handleGetGradeTerms(ctx *gin.Context) {
+	path := "v0/grades/terms"
+
+	key := buildCacheKey(ctx.Request)
+	if client.serveFromCache(ctx, path, key) {
+		return
+	}
+
+	// Get data from DB
+	res, err := client.getGradeTerms()
+	if err != nil {
+		sendInternalError(ctx, path, err)
+		return
+	}
+
+	client.writeAndCacheResponse(ctx, res, path, key, gradesTTL)
 }

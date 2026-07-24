@@ -61,6 +61,21 @@
         <td style="text-align:left">Get a list of 4-letter department codes</td>
         <td style="text-align:left"><a href="#-v0-deptlist-">jump</a></td>
         </tr>
+        <tr>
+        <td style="text-align:left"><code>/v0/grades</code></td>
+        <td style="text-align:left">Get grade distributions for individual sections</td>
+        <td style="text-align:left"><a href="#-v0-grades-">jump</a></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>/v0/grades/summary</code></td>
+        <td style="text-align:left">Get grade distributions aggregated by course, term, or instructor</td>
+        <td style="text-align:left"><a href="#-v0-grades-summary-">jump</a></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>/v0/grades/terms</code></td>
+        <td style="text-align:left">Get the terms for which grade data is available</td>
+        <td style="text-align:left"><a href="#-v0-grades-terms-">jump</a></td>
+        </tr>
         </tbody>
         </table>
         <h3 id="-v0-"><code>/v0/</code></h3>
@@ -789,6 +804,430 @@
         </tr>
         </tbody>
         </table>
+        <h3 id="-v0-grades-"><code>/v0/grades</code></h3>
+        <p><a href="#endpoints">(back to endpoints)</a></p>
+        <p>Gets grade distributions for individual course sections, as released by the University Registrar under the Maryland Public Information Act. Data covers fall and spring terms from Fall 2010 through Spring 2026; winter and summer terms were not released.</p>
+        <p>For counts aggregated across sections, terms, or instructors, use the <code>summary</code> endpoint below.</p>
+        <h4 id="query-parameters">Query parameters</h4>
+        <table>
+        <thead>
+        <tr>
+        <th style="text-align:left">param</th>
+        <th style="text-align:left">description</th>
+        <th style="text-align:left">example</th>
+        </tr>
+        </thead>
+        <tbody>
+        <tr>
+        <td style="text-align:left"><code>courseCodes</code> (optional)</td>
+        <td style="text-align:left">A string of one or multiple comma-separated course codes; cannot be combined with <code>prefix</code> or <code>number</code>.</td>
+        <td style="text-align:left"><code>courseCodes=CMSC132,MATH141</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>prefix</code> (optional)</td>
+        <td style="text-align:left">The course prefix to match records to; for instance, <code>CMSC1</code> would match all CMSC1XX courses.</td>
+        <td style="text-align:left"><code>prefix=CMSC1</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>number</code> (optional)</td>
+        <td style="text-align:left">The course number to search for across multiple departments.</td>
+        <td style="text-align:left"><code>number=433</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>term</code> (optional)</td>
+        <td style="text-align:left">A string of equalities/inequalities to filter by term code. Possible expressions are: <code>eq</code>, <code>lte</code>, <code>lt</code>, <code>gt</code>, <code>gte</code>, <code>neq</code>, and <code>in</code> for a specific set. For multiple conditions, use multiple <code>term</code> arguments.</td>
+        <td style="text-align:left"><code>term=gte.202008</code> or <code>term=in.(202408,202501)</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>instructor</code> (optional)</td>
+        <td style="text-align:left">Return only sections taught by the given instructor, written in "First Last" order. This field is case-sensitive.</td>
+        <td style="text-align:left"><code>instructor=Larry%20Herman</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>instructorSource</code> (optional)</td>
+        <td style="text-align:left">A comma-separated list of <code>instructor_source</code> values to include. Defaults to all. Use <code>reported,lead</code> to exclude attributions carried across lecture groups.</td>
+        <td style="text-align:left"><code>instructorSource=reported</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>gpa</code> (optional)</td>
+        <td style="text-align:left">A string of equalities/inequalities to filter by computed GPA.</td>
+        <td style="text-align:left"><code>gpa=gte.3.5</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>graded</code> (optional)</td>
+        <td style="text-align:left">A string of equalities/inequalities to filter by how many students received a letter grade. Useful for excluding sections too small to draw conclusions from.</td>
+        <td style="text-align:left"><code>graded=gte.30</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>limit</code> (optional)</td>
+        <td style="text-align:left">Maximum number of records to return; defaults to 100, maximum of 500.</td>
+        <td style="text-align:left"><code>limit=10</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>offset</code> (optional)</td>
+        <td style="text-align:left">How many records to skip when returning results; defaults to 0.</td>
+        <td style="text-align:left"><code>offset=10</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>sortBy</code> (optional)</td>
+        <td style="text-align:left">A comma-separated list of which columns to sort by, ascending (<code>.asc</code>) or descending (<code>.desc</code>).</td>
+        <td style="text-align:left"><code>sortBy=term.desc,sec_code.asc</code></td>
+        </tr>
+        </tbody>
+        </table>
+        <h4 id="output">Output</h4>
+        <table>
+        <thead>
+        <tr>
+        <th style="text-align:left">field</th>
+        <th style="text-align:center">type</th>
+        <th style="text-align:left">description</th>
+        </tr>
+        </thead>
+        <tbody>
+        <tr>
+        <td style="text-align:left"><code>term</code></td>
+        <td style="text-align:center">int</td>
+        <td style="text-align:left">Six-digit term code: the four-digit year followed by the month the term begins (<code>01</code> spring, <code>08</code> fall). Fall 2024 is <code>202408</code>.</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>course_code</code></td>
+        <td style="text-align:center">string</td>
+        <td style="text-align:left">The course code, matching <code>course_code</code> elsewhere in this API. A course that has since been retired will have grade records but no entry in <code>/v0/courses</code>.</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>sec_code</code></td>
+        <td style="text-align:center">string</td>
+        <td style="text-align:left">The section code, matching <code>sec_code</code> on <code>/v0/sections</code>.</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>instructor</code></td>
+        <td style="text-align:center">string or null</td>
+        <td style="text-align:left">The instructor exactly as the Registrar printed them, in "Last, First Middle" order. Null where the release left the field blank.</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>instructor_name</code></td>
+        <td style="text-align:center">string or null</td>
+        <td style="text-align:left">The effective instructor in "First Last" order, suitable for matching against <code>/v0/instructors</code>. May be populated where <code>instructor</code> is null; see <code>instructor_source</code>.</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>instructor_source</code></td>
+        <td style="text-align:center">string or null</td>
+        <td style="text-align:left">How <code>instructor_name</code> was determined. <code>reported</code> means the Registrar named them on this row. <code>lead</code> means the name was carried from the lead section of the same lecture, which is how the release records discussion and lab sections. <code>course</code> means it was carried from a different lecture group or a differently-coded offering, and is materially less reliable. Null where no section of the course was named.</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>total</code></td>
+        <td style="text-align:center">int</td>
+        <td style="text-align:left">Students enrolled, as reported. From Fall 2017 this equals the sum of the fifteen grade buckets; in earlier terms it can exceed that sum by a few students whose outcome the older report did not categorize. Prefer <code>graded</code> as a denominator when comparing across that boundary.</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>a_plus</code>, <code>a</code>, <code>a_minus</code> … <code>d_minus</code>, <code>f</code></td>
+        <td style="text-align:center">int</td>
+        <td style="text-align:left">Students receiving each letter grade.</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>w</code></td>
+        <td style="text-align:center">int</td>
+        <td style="text-align:left">Students who withdrew.</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>other</code></td>
+        <td style="text-align:center">int</td>
+        <td style="text-align:left">Students receiving a non-letter outcome (pass/fail, incomplete, audit, and similar).</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>graded</code></td>
+        <td style="text-align:center">int</td>
+        <td style="text-align:left">Students who received a letter grade; the denominator used for <code>gpa</code>.</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>gpa</code></td>
+        <td style="text-align:center">number or null</td>
+        <td style="text-align:left">Mean GPA on the UMD 4.0 scale over <code>graded</code> students. Withdrawals and non-letter outcomes are excluded from both the numerator and the denominator. Null where nobody received a letter grade.</td>
+        </tr>
+        </tbody>
+        </table>
+        <h4 id="examples">Examples</h4>
+        <h5 id="getting-every-section-of-a-course-in-one-term">Getting every section of a course in one term</h5>
+        <p>Request: <code>GET http://api.jupiterp.com/v0/grades?courseCodes=CMSC132&amp;term=eq.202408&amp;limit=2</code></p>
+        <p>Response:</p>
+        <pre><code><span class="hljs-punctuation">[</span>
+          <span class="hljs-punctuation">{</span>
+            <span class="hljs-attr">"term"</span><span class="hljs-punctuation">:</span> <span class="hljs-number">202408</span><span class="hljs-punctuation">,</span>
+            <span class="hljs-attr">"course_code"</span><span class="hljs-punctuation">:</span> <span class="hljs-string">"CMSC132"</span><span class="hljs-punctuation">,</span>
+            <span class="hljs-attr">"sec_code"</span><span class="hljs-punctuation">:</span> <span class="hljs-string">"0101"</span><span class="hljs-punctuation">,</span>
+            <span class="hljs-attr">"instructor"</span><span class="hljs-punctuation">:</span> <span class="hljs-string">"Herman, Larry"</span><span class="hljs-punctuation">,</span>
+            <span class="hljs-attr">"instructor_name"</span><span class="hljs-punctuation">:</span> <span class="hljs-string">"Larry Herman"</span><span class="hljs-punctuation">,</span>
+            <span class="hljs-attr">"instructor_source"</span><span class="hljs-punctuation">:</span> <span class="hljs-string">"reported"</span><span class="hljs-punctuation">,</span>
+            <span class="hljs-attr">"total"</span><span class="hljs-punctuation">:</span> <span class="hljs-number">32</span><span class="hljs-punctuation">,</span>
+            <span class="hljs-attr">"a_plus"</span><span class="hljs-punctuation">:</span> <span class="hljs-number">0</span><span class="hljs-punctuation">,</span>
+            <span class="hljs-attr">"a"</span><span class="hljs-punctuation">:</span> <span class="hljs-number">1</span><span class="hljs-punctuation">,</span>
+            <span class="hljs-attr">"a_minus"</span><span class="hljs-punctuation">:</span> <span class="hljs-number">4</span><span class="hljs-punctuation">,</span>
+            <span class="hljs-attr">"graded"</span><span class="hljs-punctuation">:</span> <span class="hljs-number">30</span><span class="hljs-punctuation">,</span>
+            <span class="hljs-attr">"gpa"</span><span class="hljs-punctuation">:</span> <span class="hljs-number">2.583</span>
+          <span class="hljs-punctuation">}</span><span class="hljs-punctuation">,</span>
+          <span class="hljs-punctuation">{</span>
+            <span class="hljs-attr">"term"</span><span class="hljs-punctuation">:</span> <span class="hljs-number">202408</span><span class="hljs-punctuation">,</span>
+            <span class="hljs-attr">"course_code"</span><span class="hljs-punctuation">:</span> <span class="hljs-string">"CMSC132"</span><span class="hljs-punctuation">,</span>
+            <span class="hljs-attr">"sec_code"</span><span class="hljs-punctuation">:</span> <span class="hljs-string">"0102"</span><span class="hljs-punctuation">,</span>
+            <span class="hljs-attr">"instructor"</span><span class="hljs-punctuation">:</span> <span class="hljs-literal"><span class="hljs-keyword">null</span></span><span class="hljs-punctuation">,</span>
+            <span class="hljs-attr">"instructor_name"</span><span class="hljs-punctuation">:</span> <span class="hljs-string">"Larry Herman"</span><span class="hljs-punctuation">,</span>
+            <span class="hljs-attr">"instructor_source"</span><span class="hljs-punctuation">:</span> <span class="hljs-string">"lead"</span><span class="hljs-punctuation">,</span>
+            <span class="hljs-attr">"total"</span><span class="hljs-punctuation">:</span> <span class="hljs-number">34</span><span class="hljs-punctuation">,</span>
+            <span class="hljs-attr">"a_plus"</span><span class="hljs-punctuation">:</span> <span class="hljs-number">2</span><span class="hljs-punctuation">,</span>
+            <span class="hljs-attr">"a"</span><span class="hljs-punctuation">:</span> <span class="hljs-number">7</span><span class="hljs-punctuation">,</span>
+            <span class="hljs-attr">"a_minus"</span><span class="hljs-punctuation">:</span> <span class="hljs-number">5</span><span class="hljs-punctuation">,</span>
+            <span class="hljs-attr">"graded"</span><span class="hljs-punctuation">:</span> <span class="hljs-number">34</span><span class="hljs-punctuation">,</span>
+            <span class="hljs-attr">"gpa"</span><span class="hljs-punctuation">:</span> <span class="hljs-number">3.118</span>
+          <span class="hljs-punctuation">}</span>
+        <span class="hljs-punctuation">]</span>
+        </code></pre>
+        <p>Note the second record: the release lists the instructor once against the lecture and leaves the discussion sections blank, so <code>instructor</code> is null while <code>instructor_name</code> carries the lecturer's name and <code>instructor_source</code> records that it was inferred.</p>
+        <h3 id="-v0-grades-summary-"><code>/v0/grades/summary</code></h3>
+        <p><a href="#endpoints">(back to endpoints)</a></p>
+        <p>Gets grade distributions with the individual sections summed together. This is usually the endpoint you want: <code>groupBy=course</code> answers "how hard is this course", <code>groupBy=term</code> answers "has it changed", and <code>groupBy=instructor</code> answers "who should I take it with".</p>
+        <h4 id="query-parameters-1">Query parameters</h4>
+        <table>
+        <thead>
+        <tr>
+        <th style="text-align:left">param</th>
+        <th style="text-align:left">description</th>
+        <th style="text-align:left">example</th>
+        </tr>
+        </thead>
+        <tbody>
+        <tr>
+        <td style="text-align:left"><code>groupBy</code> (optional)</td>
+        <td style="text-align:left">One of <code>course</code> (default), <code>term</code>, or <code>instructor</code>. <code>course</code> returns one record per course across every term on file; <code>term</code> returns one record per course per term; <code>instructor</code> returns one record per course per instructor.</td>
+        <td style="text-align:left"><code>groupBy=instructor</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>includeCarried</code> (optional)</td>
+        <td style="text-align:left">Only meaningful with <code>groupBy=instructor</code>. When true, also counts sections whose instructor was carried across lecture groups (<code>instructor_source</code> of <code>course</code>). Wider coverage, lower confidence. Defaults to false.</td>
+        <td style="text-align:left"><code>includeCarried=true</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>courseCodes</code> (optional)</td>
+        <td style="text-align:left">A string of one or multiple comma-separated course codes; cannot be combined with <code>prefix</code> or <code>number</code>.</td>
+        <td style="text-align:left"><code>courseCodes=CMSC132</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>prefix</code> (optional)</td>
+        <td style="text-align:left">The course prefix to match records to.</td>
+        <td style="text-align:left"><code>prefix=CMSC3</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>number</code> (optional)</td>
+        <td style="text-align:left">The course number to search for across multiple departments.</td>
+        <td style="text-align:left"><code>number=433</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>term</code> (optional)</td>
+        <td style="text-align:left">Equalities/inequalities to filter by term code. Only applied when <code>groupBy=term</code>, since the other groupings are aggregated across every term on file.</td>
+        <td style="text-align:left"><code>term=gte.202008</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>instructor</code> (optional)</td>
+        <td style="text-align:left">Return only the given instructor, in "First Last" order. Only applied when <code>groupBy=instructor</code>. Case-sensitive.</td>
+        <td style="text-align:left"><code>instructor=Anwar%20Mamat</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>gpa</code> (optional)</td>
+        <td style="text-align:left">Equalities/inequalities to filter by the aggregated GPA.</td>
+        <td style="text-align:left"><code>gpa=gte.3.0</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>minStudents</code> (optional)</td>
+        <td style="text-align:left">Exclude groups totalling fewer than this many students.</td>
+        <td style="text-align:left"><code>minStudents=100</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>limit</code> (optional)</td>
+        <td style="text-align:left">Maximum number of records to return; defaults to 100, maximum of 500.</td>
+        <td style="text-align:left"><code>limit=10</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>offset</code> (optional)</td>
+        <td style="text-align:left">How many records to skip; defaults to 0.</td>
+        <td style="text-align:left"><code>offset=10</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>sortBy</code> (optional)</td>
+        <td style="text-align:left">A comma-separated list of which columns to sort by.</td>
+        <td style="text-align:left"><code>sortBy=gpa.desc</code></td>
+        </tr>
+        </tbody>
+        </table>
+        <h4 id="output-1">Output</h4>
+        <p>All groupings return the summed grade buckets (<code>a_plus</code> through <code>other</code>), <code>total</code>, <code>graded</code>, and <code>gpa</code>, defined exactly as on <code>/v0/grades</code>. In addition:</p>
+        <table>
+        <thead>
+        <tr>
+        <th style="text-align:left">field</th>
+        <th style="text-align:center">type</th>
+        <th style="text-align:left">description</th>
+        </tr>
+        </thead>
+        <tbody>
+        <tr>
+        <td style="text-align:left"><code>course_code</code></td>
+        <td style="text-align:center">string</td>
+        <td style="text-align:left">The course these counts are for.</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>term</code></td>
+        <td style="text-align:center">int</td>
+        <td style="text-align:left">Only present when <code>groupBy=term</code>.</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>instructor</code></td>
+        <td style="text-align:center">string</td>
+        <td style="text-align:left">Only present when <code>groupBy=instructor</code>; the instructor in "First Last" order.</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>section_count</code></td>
+        <td style="text-align:center">int</td>
+        <td style="text-align:left">How many individual sections were summed.</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>term_count</code></td>
+        <td style="text-align:center">int</td>
+        <td style="text-align:left">How many distinct terms are represented. Not present when <code>groupBy=term</code>.</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>first_term</code>, <code>last_term</code></td>
+        <td style="text-align:center">int</td>
+        <td style="text-align:left">The earliest and latest term represented. Not present when <code>groupBy=term</code>.</td>
+        </tr>
+        </tbody>
+        </table>
+        <h4 id="examples-1">Examples</h4>
+        <h5 id="how-hard-is-a-course-over-its-whole-history">How hard is a course, over its whole history</h5>
+        <p>Request: <code>GET http://api.jupiterp.com/v0/grades/summary?courseCodes=CMSC351</code></p>
+        <p>Response:</p>
+        <pre><code>[
+          {
+            <span class="hljs-attr">"course_code":</span> <span class="hljs-string">"CMSC351"</span>,
+            <span class="hljs-attr">"section_count":</span> <span class="hljs-number">97</span>,
+            <span class="hljs-attr">"term_count":</span> <span class="hljs-number">32</span>,
+            <span class="hljs-attr">"first_term":</span> <span class="hljs-number">201008</span>,
+            <span class="hljs-attr">"last_term":</span> <span class="hljs-number">202601</span>,
+            <span class="hljs-attr">"total":</span> <span class="hljs-number">14969</span>,
+            <span class="hljs-attr">"graded":</span> <span class="hljs-number">13346</span>,
+            <span class="hljs-attr">"a_plus":</span> <span class="hljs-number">450</span>,
+            <span class="hljs-attr">"a":</span> <span class="hljs-number">1578</span>,
+            <span class="hljs-attr">"a_minus":</span> <span class="hljs-number">1153</span>,
+            <span class="hljs-attr">"b_plus":</span> <span class="hljs-number">1313</span>,
+            <span class="hljs-attr">"b":</span> <span class="hljs-number">2169</span>,
+            <span class="hljs-attr">"b_minus":</span> <span class="hljs-number">1441</span>,
+            <span class="hljs-attr">"c_plus":</span> <span class="hljs-number">1263</span>,
+            <span class="hljs-attr">"c":</span> <span class="hljs-number">1583</span>,
+            <span class="hljs-attr">"c_minus":</span> <span class="hljs-number">1002</span>,
+            <span class="hljs-attr">"d_plus":</span> <span class="hljs-number">185</span>,
+            <span class="hljs-attr">"d":</span> <span class="hljs-number">846</span>,
+            <span class="hljs-attr">"d_minus":</span> <span class="hljs-number">70</span>,
+            <span class="hljs-attr">"f":</span> <span class="hljs-number">293</span>,
+            <span class="hljs-attr">"w":</span> <span class="hljs-number">738</span>,
+            <span class="hljs-attr">"other":</span> <span class="hljs-number">791</span>,
+            <span class="hljs-attr">"gpa":</span> <span class="hljs-number">2.699</span>
+          }
+        ]
+        </code></pre>
+        <h5 id="comparing-instructors-for-a-course">Comparing instructors for a course</h5>
+        <p>Request: <code>GET http://api.jupiterp.com/v0/grades/summary?groupBy=instructor&amp;courseCodes=CMSC330&amp;minStudents=1000&amp;sortBy=gpa.desc</code></p>
+        <p>Response:</p>
+        <pre><code>[
+          {
+            <span class="hljs-string">"course_code"</span>: <span class="hljs-string">"CMSC330"</span>,
+            <span class="hljs-string">"instructor"</span>: <span class="hljs-string">"Michael W. Hicks"</span>,
+            <span class="hljs-string">"section_count"</span>: <span class="hljs-number">37</span>,
+            <span class="hljs-string">"term_count"</span>: <span class="hljs-number">7</span>,
+            <span class="hljs-string">"first_term"</span>: <span class="hljs-number">201301</span>,
+            <span class="hljs-string">"last_term"</span>: <span class="hljs-number">202101</span>,
+            <span class="hljs-string">"total"</span>: <span class="hljs-number">1205</span>,
+            <span class="hljs-string">"graded"</span>: <span class="hljs-number">1076</span>,
+            <span class="hljs-string">"gpa"</span>: <span class="hljs-number">3.123</span>
+          },
+          {
+            <span class="hljs-string">"course_code"</span>: <span class="hljs-string">"CMSC330"</span>,
+            <span class="hljs-string">"instructor"</span>: <span class="hljs-string">"Roger D. Eastman"</span>,
+            <span class="hljs-string">"section_count"</span>: <span class="hljs-number">39</span>,
+            <span class="hljs-string">"term_count"</span>: <span class="hljs-number">5</span>,
+            <span class="hljs-string">"first_term"</span>: <span class="hljs-number">201808</span>,
+            <span class="hljs-string">"last_term"</span>: <span class="hljs-number">202108</span>,
+            <span class="hljs-string">"total"</span>: <span class="hljs-number">1258</span>,
+            <span class="hljs-string">"graded"</span>: <span class="hljs-number">1045</span>,
+            <span class="hljs-string">"gpa"</span>: <span class="hljs-number">3.047</span>
+          }
+        ]
+        </code></pre>
+        <h3 id="-v0-grades-terms-"><code>/v0/grades/terms</code></h3>
+        <p><a href="#endpoints">(back to endpoints)</a></p>
+        <p>Gets every term for which grade data has been loaded, newest first. Takes no parameters. Useful for discovering coverage before querying, since the released data covers fall and spring only.</p>
+        <h4 id="output-2">Output</h4>
+        <table>
+        <thead>
+        <tr>
+        <th style="text-align:left">field</th>
+        <th style="text-align:center">type</th>
+        <th style="text-align:left">description</th>
+        </tr>
+        </thead>
+        <tbody>
+        <tr>
+        <td style="text-align:left"><code>term</code></td>
+        <td style="text-align:center">int</td>
+        <td style="text-align:left">Six-digit term code.</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>section_count</code></td>
+        <td style="text-align:center">int</td>
+        <td style="text-align:left">Sections with grade data in this term.</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>course_count</code></td>
+        <td style="text-align:center">int</td>
+        <td style="text-align:left">Distinct courses with grade data in this term.</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>total</code></td>
+        <td style="text-align:center">int</td>
+        <td style="text-align:left">Students enrolled across every section.</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>graded</code></td>
+        <td style="text-align:center">int</td>
+        <td style="text-align:left">Students who received a letter grade.</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>gpa</code></td>
+        <td style="text-align:center">number</td>
+        <td style="text-align:left">Mean GPA across the whole university for the term.</td>
+        </tr>
+        </tbody>
+        </table>
+        <h4 id="example">Example</h4>
+        <p>Request: <code>GET http://api.jupiterp.com/v0/grades/terms</code></p>
+        <p>Response:</p>
+        <pre><code>[
+          {
+            <span class="hljs-attr">"term":</span> <span class="hljs-number">202601</span>,
+            <span class="hljs-attr">"section_count":</span> <span class="hljs-number">6543</span>,
+            <span class="hljs-attr">"course_count":</span> <span class="hljs-number">3213</span>,
+            <span class="hljs-attr">"total":</span> <span class="hljs-number">168366</span>,
+            <span class="hljs-attr">"graded":</span> <span class="hljs-number">161397</span>,
+            <span class="hljs-attr">"gpa":</span> <span class="hljs-number">3.488</span>
+          },
+          {
+            <span class="hljs-attr">"term":</span> <span class="hljs-number">202508</span>,
+            <span class="hljs-attr">"section_count":</span> <span class="hljs-number">7056</span>,
+            <span class="hljs-attr">"course_count":</span> <span class="hljs-number">3263</span>,
+            <span class="hljs-attr">"total":</span> <span class="hljs-number">186608</span>,
+            <span class="hljs-attr">"graded":</span> <span class="hljs-number">176931</span>,
+            <span class="hljs-attr">"gpa":</span> <span class="hljs-number">3.503</span>
+          }
+        ]
+        </code></pre>
 
 
 </html>
