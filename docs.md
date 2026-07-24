@@ -20,6 +20,9 @@ Feel free to view or contribute to the project [on GitHub](https://www.github.co
 | `/v0/instructors` | Get a list of instructors and their ratings | [jump](#-v0-instructors-) |
 | `/v0/instructors/active` | Get a list of instructors actively teaching a course | [jump](#-v0-instructors-active-) |
 | `/v0/deptList` | Get a list of 4-letter department codes | [jump](#-v0-deptlist-) |
+| `/v0/grades` | Get grade distributions for individual sections | [jump](#-v0-grades-) |
+| `/v0/grades/summary` | Get grade distributions aggregated by course, term, or instructor | [jump](#-v0-grades-summary-) |
+| `/v0/grades/terms` | Get the terms for which grade data is available | [jump](#-v0-grades-terms-) |
 
 ### `/v0/` 
 
@@ -497,3 +500,233 @@ None
 | :-- | :--: | :-- |
 | `dept_code` | string | A unique 4-letter department code |
 | `name` | string | The name of the department |
+### `/v0/grades` 
+
+[(back to endpoints)](#endpoints)
+
+Gets grade distributions for individual course sections, as released by the University Registrar under the Maryland Public Information Act. Data covers fall and spring terms from Fall 2010 through Spring 2026; winter and summer terms were not released.
+
+For counts aggregated across sections, terms, or instructors, use the `summary` endpoint below.
+
+#### Query parameters
+
+| param | description | example |
+|:--|:--|:--|
+| `courseCodes` (optional) | A string of one or multiple comma-separated course codes; cannot be combined with `prefix` or `number`. | `courseCodes=CMSC132,MATH141` |
+| `prefix` (optional) | The course prefix to match records to; for instance, `CMSC1` would match all CMSC1XX courses. | `prefix=CMSC1` |
+| `number` (optional) | The course number to search for across multiple departments. | `number=433` |
+| `term` (optional) | A string of equalities/inequalities to filter by term code. Possible expressions are: `eq`, `lte`, `lt`, `gt`, `gte`, `neq`, and `in` for a specific set. For multiple conditions, use multiple `term` arguments. | `term=gte.202008` or `term=in.(202408,202501)` |
+| `instructor` (optional) | Return only sections taught by the given instructor, written in "First Last" order. This field is case-sensitive. | `instructor=Larry%20Herman` |
+| `instructorSource` (optional) | A comma-separated list of `instructor_source` values to include. Defaults to all. Use `reported,lead` to exclude attributions carried across lecture groups. | `instructorSource=reported` |
+| `gpa` (optional) | A string of equalities/inequalities to filter by computed GPA. | `gpa=gte.3.5` |
+| `graded` (optional) | A string of equalities/inequalities to filter by how many students received a letter grade. Useful for excluding sections too small to draw conclusions from. | `graded=gte.30` |
+| `limit` (optional) | Maximum number of records to return; defaults to 100, maximum of 500. | `limit=10` |
+| `offset` (optional) | How many records to skip when returning results; defaults to 0. | `offset=10` |
+| `sortBy` (optional) | A comma-separated list of which columns to sort by, ascending (`.asc`) or descending (`.desc`). | `sortBy=term.desc,sec_code.asc` |
+
+#### Output
+
+| field | type | description |
+| :-- | :--: | :-- |
+| `term` | int | Six-digit term code: the four-digit year followed by the month the term begins (`01` spring, `08` fall). Fall 2024 is `202408`. |
+| `course_code` | string | The course code, matching `course_code` elsewhere in this API. A course that has since been retired will have grade records but no entry in `/v0/courses`. |
+| `sec_code` | string | The section code, matching `sec_code` on `/v0/sections`. |
+| `instructor` | string or null | The instructor exactly as the Registrar printed them, in "Last, First Middle" order. Null where the release left the field blank. |
+| `instructor_name` | string or null | The effective instructor in "First Last" order, suitable for matching against `/v0/instructors`. May be populated where `instructor` is null; see `instructor_source`. |
+| `instructor_source` | string or null | How `instructor_name` was determined. `reported` means the Registrar named them on this row. `lead` means the name was carried from the lead section of the same lecture, which is how the release records discussion and lab sections. `course` means it was carried from a different lecture group or a differently-coded offering, and is materially less reliable. Null where no section of the course was named. |
+| `total` | int | Students enrolled, as reported. From Fall 2017 this equals the sum of the fifteen grade buckets; in earlier terms it can exceed that sum by a few students whose outcome the older report did not categorize. Prefer `graded` as a denominator when comparing across that boundary. |
+| `a_plus`, `a`, `a_minus` … `d_minus`, `f` | int | Students receiving each letter grade. |
+| `w` | int | Students who withdrew. |
+| `other` | int | Students receiving a non-letter outcome (pass/fail, incomplete, audit, and similar). |
+| `graded` | int | Students who received a letter grade; the denominator used for `gpa`. |
+| `gpa` | number or null | Mean GPA on the UMD 4.0 scale over `graded` students. Withdrawals and non-letter outcomes are excluded from both the numerator and the denominator. Null where nobody received a letter grade. |
+
+#### Examples
+
+##### Getting every section of a course in one term
+
+Request: `GET http://api.jupiterp.com/v0/grades?courseCodes=CMSC132&term=eq.202408&limit=2`
+
+Response:
+```
+[
+  {
+    "term": 202408,
+    "course_code": "CMSC132",
+    "sec_code": "0101",
+    "instructor": "Herman, Larry",
+    "instructor_name": "Larry Herman",
+    "instructor_source": "reported",
+    "total": 32,
+    "a_plus": 0,
+    "a": 1,
+    "a_minus": 4,
+    "graded": 30,
+    "gpa": 2.583
+  },
+  {
+    "term": 202408,
+    "course_code": "CMSC132",
+    "sec_code": "0102",
+    "instructor": null,
+    "instructor_name": "Larry Herman",
+    "instructor_source": "lead",
+    "total": 34,
+    "a_plus": 2,
+    "a": 7,
+    "a_minus": 5,
+    "graded": 34,
+    "gpa": 3.118
+  }
+]
+```
+
+Note the second record: the release lists the instructor once against the lecture and leaves the discussion sections blank, so `instructor` is null while `instructor_name` carries the lecturer's name and `instructor_source` records that it was inferred.
+
+### `/v0/grades/summary` 
+
+[(back to endpoints)](#endpoints)
+
+Gets grade distributions with the individual sections summed together. This is usually the endpoint you want: `groupBy=course` answers "how hard is this course", `groupBy=term` answers "has it changed", and `groupBy=instructor` answers "who should I take it with".
+
+#### Query parameters
+
+| param | description | example |
+|:--|:--|:--|
+| `groupBy` (optional) | One of `course` (default), `term`, or `instructor`. `course` returns one record per course across every term on file; `term` returns one record per course per term; `instructor` returns one record per course per instructor. | `groupBy=instructor` |
+| `includeCarried` (optional) | Only meaningful with `groupBy=instructor`. When true, also counts sections whose instructor was carried across lecture groups (`instructor_source` of `course`). Wider coverage, lower confidence. Defaults to false. | `includeCarried=true` |
+| `courseCodes` (optional) | A string of one or multiple comma-separated course codes; cannot be combined with `prefix` or `number`. | `courseCodes=CMSC132` |
+| `prefix` (optional) | The course prefix to match records to. | `prefix=CMSC3` |
+| `number` (optional) | The course number to search for across multiple departments. | `number=433` |
+| `term` (optional) | Equalities/inequalities to filter by term code. Only applied when `groupBy=term`, since the other groupings are aggregated across every term on file. | `term=gte.202008` |
+| `instructor` (optional) | Return only the given instructor, in "First Last" order. Only applied when `groupBy=instructor`. Case-sensitive. | `instructor=Anwar%20Mamat` |
+| `gpa` (optional) | Equalities/inequalities to filter by the aggregated GPA. | `gpa=gte.3.0` |
+| `minStudents` (optional) | Exclude groups totalling fewer than this many students. | `minStudents=100` |
+| `limit` (optional) | Maximum number of records to return; defaults to 100, maximum of 500. | `limit=10` |
+| `offset` (optional) | How many records to skip; defaults to 0. | `offset=10` |
+| `sortBy` (optional) | A comma-separated list of which columns to sort by. | `sortBy=gpa.desc` |
+
+#### Output
+
+All groupings return the summed grade buckets (`a_plus` through `other`), `total`, `graded`, and `gpa`, defined exactly as on `/v0/grades`. In addition:
+
+| field | type | description |
+| :-- | :--: | :-- |
+| `course_code` | string | The course these counts are for. |
+| `term` | int | Only present when `groupBy=term`. |
+| `instructor` | string | Only present when `groupBy=instructor`; the instructor in "First Last" order. |
+| `section_count` | int | How many individual sections were summed. |
+| `term_count` | int | How many distinct terms are represented. Not present when `groupBy=term`. |
+| `first_term`, `last_term` | int | The earliest and latest term represented. Not present when `groupBy=term`. |
+
+#### Examples
+
+##### How hard is a course, over its whole history
+
+Request: `GET http://api.jupiterp.com/v0/grades/summary?courseCodes=CMSC351`
+
+Response:
+```
+[
+  {
+    "course_code": "CMSC351",
+    "section_count": 97,
+    "term_count": 32,
+    "first_term": 201008,
+    "last_term": 202601,
+    "total": 14969,
+    "graded": 13346,
+    "a_plus": 450,
+    "a": 1578,
+    "a_minus": 1153,
+    "b_plus": 1313,
+    "b": 2169,
+    "b_minus": 1441,
+    "c_plus": 1263,
+    "c": 1583,
+    "c_minus": 1002,
+    "d_plus": 185,
+    "d": 846,
+    "d_minus": 70,
+    "f": 293,
+    "w": 738,
+    "other": 791,
+    "gpa": 2.699
+  }
+]
+```
+
+##### Comparing instructors for a course
+
+Request: `GET http://api.jupiterp.com/v0/grades/summary?groupBy=instructor&courseCodes=CMSC330&minStudents=1000&sortBy=gpa.desc`
+
+Response:
+```
+[
+  {
+    "course_code": "CMSC330",
+    "instructor": "Michael W. Hicks",
+    "section_count": 37,
+    "term_count": 7,
+    "first_term": 201301,
+    "last_term": 202101,
+    "total": 1205,
+    "graded": 1076,
+    "gpa": 3.123
+  },
+  {
+    "course_code": "CMSC330",
+    "instructor": "Roger D. Eastman",
+    "section_count": 39,
+    "term_count": 5,
+    "first_term": 201808,
+    "last_term": 202108,
+    "total": 1258,
+    "graded": 1045,
+    "gpa": 3.047
+  }
+]
+```
+
+### `/v0/grades/terms` 
+
+[(back to endpoints)](#endpoints)
+
+Gets every term for which grade data has been loaded, newest first. Takes no parameters. Useful for discovering coverage before querying, since the released data covers fall and spring only.
+
+#### Output
+
+| field | type | description |
+| :-- | :--: | :-- |
+| `term` | int | Six-digit term code. |
+| `section_count` | int | Sections with grade data in this term. |
+| `course_count` | int | Distinct courses with grade data in this term. |
+| `total` | int | Students enrolled across every section. |
+| `graded` | int | Students who received a letter grade. |
+| `gpa` | number | Mean GPA across the whole university for the term. |
+
+#### Example
+
+Request: `GET http://api.jupiterp.com/v0/grades/terms`
+
+Response:
+```
+[
+  {
+    "term": 202601,
+    "section_count": 6543,
+    "course_count": 3213,
+    "total": 168366,
+    "graded": 161397,
+    "gpa": 3.488
+  },
+  {
+    "term": 202508,
+    "section_count": 7056,
+    "course_count": 3263,
+    "total": 186608,
+    "graded": 176931,
+    "gpa": 3.503
+  }
+]
+```
