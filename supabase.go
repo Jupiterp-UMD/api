@@ -199,3 +199,100 @@ func (s SupabaseClient) getDepartments() (*http.Response, error) {
 	params.Set("order", "dept_code")
 	return s.request("departments", params.Encode())
 }
+
+// Apply the shared course-matching filters used by both grade endpoints. Only
+// one of `courseCodes`, `prefix`, or `number` is honored; handlers reject
+// requests that set more than one.
+func applyCourseFilter(params url.Values, courseCodes, prefix, number string) {
+	if courseCodes != "" {
+		params.Set("course_code", fmt.Sprintf("in.(%s)", courseCodes))
+	} else if prefix != "" {
+		params.Set("course_code", fmt.Sprintf("like.%s*", prefix))
+	} else if number != "" {
+		params.Set("course_code", fmt.Sprintf("like.____%s*", number))
+	}
+}
+
+// Get section-level grade distributions.
+func (s SupabaseClient) getGrades(args GradesArgs) (*http.Response, error) {
+	// SELECT * FROM grades
+	// WHERE course_code IN `args.CourseCodes`
+	// / WHERE course_code LIKE `args.Prefix`*
+	// / WHERE course_code LIKE ____`args.Number`*
+	// AND term `args.Terms`
+	// AND instructor_name = `args.Instructor`
+	// AND instructor_source IN `args.InstructorSource`
+	// AND gpa `args.Gpa`
+	// AND graded `args.Graded`
+	// OFFSET `args.Offset` LIMIT `args.Limit`
+	// SORT BY `args.SortBy`
+	params := url.Values{}
+	params.Set("select", "*")
+	applyCourseFilter(params, args.CourseCodes, args.Prefix, args.Number)
+	for _, cond := range args.Terms {
+		params.Add("term", cond)
+	}
+	for _, cond := range args.Gpa {
+		params.Add("gpa", cond)
+	}
+	for _, cond := range args.Graded {
+		params.Add("graded", cond)
+	}
+	if args.Instructor != "" {
+		params.Set("instructor_name", fmt.Sprintf("eq.%s", args.Instructor))
+	}
+	if args.InstructorSource != "" {
+		params.Set("instructor_source", fmt.Sprintf("in.(%s)", args.InstructorSource))
+	}
+	params.Set("offset", fmt.Sprintf("%d", args.Offset))
+	params.Set("limit", fmt.Sprintf("%d", args.Limit))
+	if args.SortBy != "" {
+		params.Set("order", args.SortBy)
+	}
+	return s.request("grades", params.Encode())
+}
+
+// Get aggregated grade distributions from one of the summary views. The view is
+// chosen by the caller's `groupBy`; see `summaryTable`.
+func (s SupabaseClient) getGradeSummary(args GradeSummaryArgs, table string) (*http.Response, error) {
+	// SELECT * FROM `table`
+	// WHERE course_code IN `args.CourseCodes` / LIKE `args.Prefix`* / LIKE ____`args.Number`*
+	// AND term `args.Terms` (only when the view carries a term column)
+	// AND instructor = `args.Instructor` (only on the instructor views)
+	// AND gpa `args.Gpa`
+	// AND total `args.MinStudents`
+	// OFFSET `args.Offset` LIMIT `args.Limit`
+	// SORT BY `args.SortBy`
+	params := url.Values{}
+	params.Set("select", "*")
+	applyCourseFilter(params, args.CourseCodes, args.Prefix, args.Number)
+	if table == gradeSummaryByTermTable {
+		for _, cond := range args.Terms {
+			params.Add("term", cond)
+		}
+	}
+	if args.Instructor != "" && isInstructorSummary(table) {
+		params.Set("instructor", fmt.Sprintf("eq.%s", args.Instructor))
+	}
+	for _, cond := range args.Gpa {
+		params.Add("gpa", cond)
+	}
+	if args.MinStudents > 0 {
+		params.Set("total", fmt.Sprintf("gte.%d", args.MinStudents))
+	}
+	params.Set("offset", fmt.Sprintf("%d", args.Offset))
+	params.Set("limit", fmt.Sprintf("%d", args.Limit))
+	if args.SortBy != "" {
+		params.Set("order", args.SortBy)
+	}
+	return s.request(table, params.Encode())
+}
+
+// Get every term for which grade data has been loaded, newest first.
+func (s SupabaseClient) getGradeTerms() (*http.Response, error) {
+	// SELECT * FROM grade_terms ORDER BY term DESC
+	params := url.Values{}
+	params.Set("select", "*")
+	params.Set("order", "term.desc")
+	return s.request("grade_terms", params.Encode())
+}
