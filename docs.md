@@ -741,3 +741,136 @@ Response:
   }
 ]
 ```
+---
+
+# Jupiterp API v1 (reviews)
+
+`/v1` is the write surface. It exists separately from `/v0` because writes need
+things reads do not: an origin allowlist, authentication, rate limiting, and a
+captcha. `/v0` stays exactly as it is — permissive, unauthenticated, and
+cacheable.
+
+Reviews are **pre-moderated**. Nothing submitted here is publicly visible until
+a moderator approves it, and that is true whether the decision is made by a
+person or by the automated triage.
+
+| path | method | description |
+| :-- | :-- | :-- |
+| `/v1/reviews` | GET | Approved reviews for a professor |
+| `/v1/reviews` | POST | Submit a review |
+| `/v1/reviews/verify/:token` | GET | Confirm an emailed link |
+| `/v1/reviews/:id` | PATCH | Edit (manage key) |
+| `/v1/reviews/:id` | DELETE | Withdraw (manage key) |
+| `/v1/reviews/:id/report` | POST | Report a published review |
+| `/v1/admin/reviews` | GET | Moderation queue (admin key) |
+| `/v1/admin/reviews/:id` | PUT | Approve, reject, or escalate |
+| `/v1/admin/reports` | GET | Open reports (admin key) |
+| `/v1/admin/sweep` | POST | Scheduled maintenance (admin key) |
+
+## `GET /v1/reviews`
+
+Approved reviews only, newest first. Served from a database view that cannot
+express an unapproved row and does not contain the submitter's identity
+columns at all.
+
+| parameter | description | example |
+| :-- | :-- | :-- |
+| `instructorSlug` (required) | Whose reviews to return. | `instructorSlug=shane-walsh` |
+| `courseCode` (optional) | Restrict to one course. | `courseCode=CMSC132` |
+| `limit`, `offset` (optional) | Paging; defaults 25 and 0. | `limit=50` |
+
+The total is returned in the `Content-Range` header.
+
+## `POST /v1/reviews`
+
+```json
+{
+  "instructor_slug": "shane-walsh",
+  "course_code": "CMSC132",
+  "term": 202508,
+  "rating": 4.5,
+  "expected_grade": "A-",
+  "title": "Genuinely excellent lecturer",
+  "body": "…",
+  "email": "student@terpmail.umd.edu",
+  "captcha_token": "0.abc…"
+}
+```
+
+`rating` is a decimal between 1 and 5 **on a half step** — `4.5` is valid,
+`4.3` is not. `email` must be a `terpmail.umd.edu` or `umd.edu` address; it is
+stored only as a peppered hash, is never displayed, and is never shown to the
+professor. `course_code` and `term` are optional, and `term` must be a Fall or
+Spring term, because the grade dataset covers only those.
+
+Responds `202 Accepted` with `{"status":"verification_sent"}`.
+
+**The response is identical whether or not that address has already reviewed
+this professor.** A distinguishable "you have already reviewed this" would turn
+the endpoint into an oracle for "did person X review professor Y", which is the
+privacy property the hashing exists to provide.
+
+Rate limited to 5 per hour per IP, 3 per day per address, and 20 per hour per
+professor across all submitters. The last one is what catches a coordinated
+run on a single professor, which the per-person limits do nothing about.
+
+## `GET /v1/reviews/verify/:token`
+
+Confirms the emailed link, moves the review to `pending`, and returns the
+manage key once:
+
+```json
+{ "status": "verified", "manage_key": "…", "message": "…" }
+```
+
+Idempotent: a second visit returns `already_verified` rather than an error,
+because mail clients prefetch links and people double-click.
+
+The manage key is also emailed. It cannot be recovered — there is deliberately
+no way to link it back to a person.
+
+## `PATCH` and `DELETE /v1/reviews/:id`
+
+`Authorization: Bearer <manage key>`.
+
+An edit returns the review to `pending` and it must be approved again;
+otherwise the edit path is a way to get innocuous text approved and then
+replace it. A withdrawal is a soft delete — the row remains so the
+one-review-per-person rule still holds, but the content is actually nulled.
+
+## `PUT /v1/admin/reviews/:id`
+
+```json
+{
+  "action": "approve",
+  "reason": "…",
+  "confidence": 0.93,
+  "categories": [],
+  "policy_version": "2026-08-14",
+  "model": "gemini-2.0-flash-001"
+}
+```
+
+Two callers with different keys: a human moderator with the admin key, and the
+automated triage with a narrowly scoped callback key that authorises this one
+route. Which one acted is recorded on every decision.
+
+Idempotent — asking for the state a review is already in is a success, not a
+second audit entry. State-guarded — only `pending` and `escalated` reviews are
+decidable, and a late retry against a review a human already actioned returns
+`409` rather than overturning it.
+
+Every call writes an audit row. While shadow mode is on, an automated decision
+is recorded with `applied: false` and the review is escalated to a human
+instead.
+
+## Errors
+
+| status | meaning |
+| :-- | :-- |
+| `400` | Validation failed; the message names the field |
+| `401` | Missing or wrong key |
+| `404` | No such professor or review |
+| `409` | Already decided by someone else |
+| `410` | Verification link expired |
+| `429` | Rate limited |

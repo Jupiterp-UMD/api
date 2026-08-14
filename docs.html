@@ -1283,6 +1283,203 @@
   }
 ]
 </code></pre>
+        <hr>
+        <h1 id="jupiterp-api-v1-reviews-">Jupiterp API v1 (reviews)</h1>
+        <p><code>/v1</code> is the write surface. It exists separately from <code>/v0</code> because writes need
+        things reads do not: an origin allowlist, authentication, rate limiting, and a
+        captcha. <code>/v0</code> stays exactly as it is — permissive, unauthenticated, and
+        cacheable.</p>
+        <p>Reviews are <strong>pre-moderated</strong>. Nothing submitted here is publicly visible until
+        a moderator approves it, and that is true whether the decision is made by a
+        person or by the automated triage.</p>
+        <table>
+        <thead>
+        <tr>
+        <th style="text-align:left">path</th>
+        <th style="text-align:left">method</th>
+        <th style="text-align:left">description</th>
+        </tr>
+        </thead>
+        <tbody>
+        <tr>
+        <td style="text-align:left"><code>/v1/reviews</code></td>
+        <td style="text-align:left">GET</td>
+        <td style="text-align:left">Approved reviews for a professor</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>/v1/reviews</code></td>
+        <td style="text-align:left">POST</td>
+        <td style="text-align:left">Submit a review</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>/v1/reviews/verify/:token</code></td>
+        <td style="text-align:left">GET</td>
+        <td style="text-align:left">Confirm an emailed link</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>/v1/reviews/:id</code></td>
+        <td style="text-align:left">PATCH</td>
+        <td style="text-align:left">Edit (manage key)</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>/v1/reviews/:id</code></td>
+        <td style="text-align:left">DELETE</td>
+        <td style="text-align:left">Withdraw (manage key)</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>/v1/reviews/:id/report</code></td>
+        <td style="text-align:left">POST</td>
+        <td style="text-align:left">Report a published review</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>/v1/admin/reviews</code></td>
+        <td style="text-align:left">GET</td>
+        <td style="text-align:left">Moderation queue (admin key)</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>/v1/admin/reviews/:id</code></td>
+        <td style="text-align:left">PUT</td>
+        <td style="text-align:left">Approve, reject, or escalate</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>/v1/admin/reports</code></td>
+        <td style="text-align:left">GET</td>
+        <td style="text-align:left">Open reports (admin key)</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>/v1/admin/sweep</code></td>
+        <td style="text-align:left">POST</td>
+        <td style="text-align:left">Scheduled maintenance (admin key)</td>
+        </tr>
+        </tbody>
+        </table>
+        <h2 id="-get-v1-reviews-"><code>GET /v1/reviews</code></h2>
+        <p>Approved reviews only, newest first. Served from a database view that cannot
+        express an unapproved row and does not contain the submitter's identity
+        columns at all.</p>
+        <table>
+        <thead>
+        <tr>
+        <th style="text-align:left">parameter</th>
+        <th style="text-align:left">description</th>
+        <th style="text-align:left">example</th>
+        </tr>
+        </thead>
+        <tbody>
+        <tr>
+        <td style="text-align:left"><code>instructorSlug</code> (required)</td>
+        <td style="text-align:left">Whose reviews to return.</td>
+        <td style="text-align:left"><code>instructorSlug=shane-walsh</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>courseCode</code> (optional)</td>
+        <td style="text-align:left">Restrict to one course.</td>
+        <td style="text-align:left"><code>courseCode=CMSC132</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>limit</code>, <code>offset</code> (optional)</td>
+        <td style="text-align:left">Paging; defaults 25 and 0.</td>
+        <td style="text-align:left"><code>limit=50</code></td>
+        </tr>
+        </tbody>
+        </table>
+        <p>The total is returned in the <code>Content-Range</code> header.</p>
+        <h2 id="-post-v1-reviews-"><code>POST /v1/reviews</code></h2>
+<pre><code class="language-json">{
+  &quot;instructor_slug&quot;: &quot;shane-walsh&quot;,
+  &quot;course_code&quot;: &quot;CMSC132&quot;,
+  &quot;term&quot;: 202508,
+  &quot;rating&quot;: 4.5,
+  &quot;expected_grade&quot;: &quot;A-&quot;,
+  &quot;title&quot;: &quot;Genuinely excellent lecturer&quot;,
+  &quot;body&quot;: &quot;…&quot;,
+  &quot;email&quot;: &quot;student@terpmail.umd.edu&quot;,
+  &quot;captcha_token&quot;: &quot;0.abc…&quot;
+}
+</code></pre>
+        <p><code>rating</code> is a decimal between 1 and 5 <strong>on a half step</strong> — <code>4.5</code> is valid,
+        <code>4.3</code> is not. <code>email</code> must be a <code>terpmail.umd.edu</code> or <code>umd.edu</code> address; it is
+        stored only as a peppered hash, is never displayed, and is never shown to the
+        professor. <code>course_code</code> and <code>term</code> are optional, and <code>term</code> must be a Fall or
+        Spring term, because the grade dataset covers only those.</p>
+        <p>Responds <code>202 Accepted</code> with <code>{&quot;status&quot;:&quot;verification_sent&quot;}</code>.</p>
+        <p><strong>The response is identical whether or not that address has already reviewed
+        this professor.</strong> A distinguishable &quot;you have already reviewed this&quot; would turn
+        the endpoint into an oracle for &quot;did person X review professor Y&quot;, which is the
+        privacy property the hashing exists to provide.</p>
+        <p>Rate limited to 5 per hour per IP, 3 per day per address, and 20 per hour per
+        professor across all submitters. The last one is what catches a coordinated
+        run on a single professor, which the per-person limits do nothing about.</p>
+        <h2 id="-get-v1-reviews-verify-token-"><code>GET /v1/reviews/verify/:token</code></h2>
+        <p>Confirms the emailed link, moves the review to <code>pending</code>, and returns the
+        manage key once:</p>
+<pre><code class="language-json">{ &quot;status&quot;: &quot;verified&quot;, &quot;manage_key&quot;: &quot;…&quot;, &quot;message&quot;: &quot;…&quot; }
+</code></pre>
+        <p>Idempotent: a second visit returns <code>already_verified</code> rather than an error,
+        because mail clients prefetch links and people double-click.</p>
+        <p>The manage key is also emailed. It cannot be recovered — there is deliberately
+        no way to link it back to a person.</p>
+        <h2 id="-patch-and-delete-v1-reviews-id-"><code>PATCH</code> and <code>DELETE /v1/reviews/:id</code></h2>
+        <p><code>Authorization: Bearer &lt;manage key&gt;</code>.</p>
+        <p>An edit returns the review to <code>pending</code> and it must be approved again;
+        otherwise the edit path is a way to get innocuous text approved and then
+        replace it. A withdrawal is a soft delete — the row remains so the
+        one-review-per-person rule still holds, but the content is actually nulled.</p>
+        <h2 id="-put-v1-admin-reviews-id-"><code>PUT /v1/admin/reviews/:id</code></h2>
+<pre><code class="language-json">{
+  &quot;action&quot;: &quot;approve&quot;,
+  &quot;reason&quot;: &quot;…&quot;,
+  &quot;confidence&quot;: 0.93,
+  &quot;categories&quot;: [],
+  &quot;policy_version&quot;: &quot;2026-08-14&quot;,
+  &quot;model&quot;: &quot;gemini-2.0-flash-001&quot;
+}
+</code></pre>
+        <p>Two callers with different keys: a human moderator with the admin key, and the
+        automated triage with a narrowly scoped callback key that authorises this one
+        route. Which one acted is recorded on every decision.</p>
+        <p>Idempotent — asking for the state a review is already in is a success, not a
+        second audit entry. State-guarded — only <code>pending</code> and <code>escalated</code> reviews are
+        decidable, and a late retry against a review a human already actioned returns
+        <code>409</code> rather than overturning it.</p>
+        <p>Every call writes an audit row. While shadow mode is on, an automated decision
+        is recorded with <code>applied: false</code> and the review is escalated to a human
+        instead.</p>
+        <h2 id="errors">Errors</h2>
+        <table>
+        <thead>
+        <tr>
+        <th style="text-align:left">status</th>
+        <th style="text-align:left">meaning</th>
+        </tr>
+        </thead>
+        <tbody>
+        <tr>
+        <td style="text-align:left"><code>400</code></td>
+        <td style="text-align:left">Validation failed; the message names the field</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>401</code></td>
+        <td style="text-align:left">Missing or wrong key</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>404</code></td>
+        <td style="text-align:left">No such professor or review</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>409</code></td>
+        <td style="text-align:left">Already decided by someone else</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>410</code></td>
+        <td style="text-align:left">Verification link expired</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>429</code></td>
+        <td style="text-align:left">Rate limited</td>
+        </tr>
+        </tbody>
+        </table>
 
     </body>
 </html>

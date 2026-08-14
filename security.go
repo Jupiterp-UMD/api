@@ -1,0 +1,222 @@
+package main
+
+import (
+	"crypto/rand"
+	"crypto/sha256"
+	"crypto/subtle"
+	"encoding/base64"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"net"
+	"net/http"
+	"net/url"
+	"strings"
+	"time"
+
+	"github.com/gin-gonic/gin"
+)
+
+/* ================================ hashing =============================== */
+
+// hashEmail produces the stored identity for a reviewer.
+//
+// Peppered because a bare SHA-256 of an email address is not anonymous: a
+// university's address space is small and highly guessable ("firstlast@umd.edu"),
+// so an unpeppered digest can be reversed by enumeration in minutes. The pepper
+// lives in Secret Manager rather than in the database, so a database
+// disclosure alone does not enable that.
+//
+// The address is lowercased and trimmed first so that the same person
+// submitting as "Student@umd.edu" and "student@umd.edu " is deduplicated.
+func hashEmail(email, pepper string) string {
+	normalized := strings.ToLower(strings.TrimSpace(email))
+	sum := sha256.Sum256([]byte(normalized + pepper))
+	return hex.EncodeToString(sum[:])
+}
+
+// hashToken hashes a bearer token for storage.
+//
+// No pepper: these are 256-bit random values, so there is no dictionary to
+// defend against, and the lookup has to work from the token alone.
+func hashToken(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:])
+}
+
+// hashOpaque hashes abuse-forensics values (IP, user agent) with the pepper.
+func hashOpaque(value, pepper string) string {
+	if value == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(value + pepper))
+	return hex.EncodeToString(sum[:])
+}
+
+// newToken mints a 256-bit URL-safe token.
+func newToken() (string, error) {
+	buf := make([]byte, 32)
+	if _, err := rand.Read(buf); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(buf), nil
+}
+
+// constantTimeEqual compares two secrets without leaking their contents
+// through timing. Used for every key comparison on /v1.
+func constantTimeEqual(a, b string) bool {
+	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
+}
+
+/* ============================== middleware =============================== */
+
+// AdminAuth guards the full moderation surface.
+func AdminAuth(cfg *Config) gin.HandlerFunc {
+	return func(ctx *gin.Context) {
+		if cfg.AdminKey == "" || !constantTimeEqual(bearerToken(ctx), cfg.AdminKey) {
+			ctx.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+			return
+		}
+		ctx.Set("actor", "human")
+		ctx.Next()
+	}
+}
+
+// ModerationAuth accepts either the admin key or the scoped triage callback
+// key, and records which one was used.
+//
+// The scoped key authorises exactly one operation on one route. If n8n is
+// compromised, the blast radius is moderation decisions rather than the whole
+// admin surface -- and because the decision is recorded with `decided_by`, a
+// compromise is visible in the audit trail rather than indistinguishable from
+// a human moderator's work.
+func ModerationAuth(cfg *Config) gin.HandlerFunc {
+	return func(ctx *gin.Context) {
+		token := bearerToken(ctx)
+		switch {
+		case cfg.AdminKey != "" && constantTimeEqual(token, cfg.AdminKey):
+			ctx.Set("actor", "human")
+		case cfg.TriageCallbackKey != "" && constantTimeEqual(token, cfg.TriageCallbackKey):
+			ctx.Set("actor", "ai")
+		default:
+			ctx.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+			return
+		}
+		ctx.Next()
+	}
+}
+
+func bearerToken(ctx *gin.Context) string {
+	header := ctx.GetHeader("Authorization")
+	if after, ok := strings.CutPrefix(header, "Bearer "); ok {
+		return after
+	}
+	return ""
+}
+
+/* =============================== turnstile ============================== */
+
+type turnstileResponse struct {
+	Success    bool     `json:"success"`
+	ErrorCodes []string `json:"error-codes"`
+}
+
+// verifyTurnstile checks a Cloudflare Turnstile token.
+//
+// Turnstile over reCAPTCHA because it sets no cookie and collects no personal
+// data, which keeps it out of the privacy policy's consent section entirely.
+//
+// Returns true when no secret is configured, so that a development deployment
+// works without one. Validate() warns loudly about that at boot rather than
+// letting it pass unnoticed into production.
+func verifyTurnstile(cfg *Config, token, remoteIP string) (bool, error) {
+	if cfg.TurnstileKey == "" {
+		return true, nil
+	}
+	if token == "" {
+		return false, nil
+	}
+
+	form := url.Values{}
+	form.Set("secret", cfg.TurnstileKey)
+	form.Set("response", token)
+	if remoteIP != "" {
+		form.Set("remoteip", remoteIP)
+	}
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	res, err := client.PostForm("https://challenges.cloudflare.com/turnstile/v0/siteverify", form)
+	if err != nil {
+		return false, err
+	}
+	defer res.Body.Close()
+
+	var parsed turnstileResponse
+	if err := json.NewDecoder(res.Body).Decode(&parsed); err != nil {
+		return false, err
+	}
+	return parsed.Success, nil
+}
+
+/* ============================= rate limiting ============================ */
+
+// RateLimit describes one bucket's allowance.
+type RateLimit struct {
+	Action string
+	Window time.Duration
+	Max    int
+}
+
+var (
+	// Per IP, per hour. Generous enough that a shared campus NAT does not lock
+	// out a lecture hall, tight enough to make scripted submission tedious.
+	limitPerIP = RateLimit{Action: "submit_ip", Window: time.Hour, Max: 5}
+	// Per email, per day.
+	limitPerEmail = RateLimit{Action: "submit_email", Window: 24 * time.Hour, Max: 3}
+	// Per instructor, per hour, across all submitters. This is the one that
+	// catches brigading: the per-person limits do nothing against thirty
+	// people arriving at once to bury the same professor.
+	limitPerInstructor = RateLimit{Action: "submit_instructor", Window: time.Hour, Max: 20}
+	// Manage-key attempts, to make brute force against a 256-bit key even less
+	// attractive than the arithmetic already does.
+	limitPerManageKey = RateLimit{Action: "manage", Window: time.Hour, Max: 30}
+)
+
+// checkRateLimit increments a counter and reports whether it is still within
+// the allowance.
+//
+// The increment happens in the database, in the same statement that reads the
+// new value, so two concurrent submissions cannot both observe a count below
+// the limit and both proceed.
+func checkRateLimit(w *WriteClient, bucket string, limit RateLimit) (bool, error) {
+	var count []int
+	err := w.RPC("bump_rate_limit", map[string]any{
+		"p_bucket": bucket,
+		"p_action": limit.Action,
+		"p_window": fmt.Sprintf("%d seconds", int(limit.Window.Seconds())),
+	}, &count)
+	if err != nil {
+		return false, err
+	}
+	if len(count) == 0 {
+		// A limiter that fails open is worse than one that fails closed here:
+		// the endpoint it guards writes user content to a public site.
+		return false, fmt.Errorf("rate limiter returned no count")
+	}
+	return count[0] <= limit.Max, nil
+}
+
+// clientIP extracts the caller's address behind Cloud Run's proxy.
+func clientIP(ctx *gin.Context) string {
+	if forwarded := ctx.GetHeader("X-Forwarded-For"); forwarded != "" {
+		if first, _, found := strings.Cut(forwarded, ","); found {
+			return strings.TrimSpace(first)
+		}
+		return strings.TrimSpace(forwarded)
+	}
+	host, _, err := net.SplitHostPort(ctx.Request.RemoteAddr)
+	if err != nil {
+		return ctx.Request.RemoteAddr
+	}
+	return host
+}
