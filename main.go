@@ -14,6 +14,14 @@ This binary uses the following environment variables:
 */
 package main
 
+// docs.html is generated from docs.md; do not edit it by hand.
+//
+//	go generate ./...
+//
+// The two were maintained in parallel by hand until the grade endpoints made
+// that untenable, and they had already drifted. See tools/docsgen.
+//go:generate go run ./tools/docsgen
+
 import (
 	"log"
 	"os"

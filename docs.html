@@ -2,6 +2,8 @@
 <html>
     <head>
         <meta charset="utf-8">
+        <title>Jupiterp API Docs</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1">
         <link rel="icon" href="/favicon.svg?" type="image/svg+xml">
         <link rel="stylesheet" type="text/css" href="docs.css">
     </head>
@@ -187,102 +189,104 @@
         <h5 id="getting-multiple-specific-courses">Getting multiple specific courses</h5>
         <p>Request: <code>GET http://api.jupiterp.com/v0/courses?courseCodes=CMSC131,MATH141</code></p>
         <p>Response:</p>
-        <pre><code>[
-        {
-            <span class="hljs-string">"course_code"</span>: <span class="hljs-string">"CMSC131"</span>,
-            <span class="hljs-string">"name"</span>: <span class="hljs-string">"Object-Oriented Programming I"</span>,
-            <span class="hljs-string">"min_credits"</span>: <span class="hljs-number">4</span>,
-            <span class="hljs-string">"max_credits"</span>: null,
-            <span class="hljs-string">"gen_eds"</span>: null,
-            <span class="hljs-string">"conditions"</span>: [
-            <span class="hljs-string">"Corequisite: MATH140. "</span>,
-            <span class="hljs-string">"Credit only granted for: CMSC131, CMSC133 or CMSC141."</span>
-            ],
-            <span class="hljs-string">"description"</span>: <span class="hljs-comment">"Introduction to programming and computer science.</span>
-            Emphasizes understanding <span class="hljs-built_in">and</span> implementation of applications using
-            object-oriented techniques. Develops skills such <span class="hljs-keyword">as</span> program design <span class="hljs-built_in">and</span>
-            testing <span class="hljs-keyword">as</span> well <span class="hljs-keyword">as</span> implementation of programs using <span class="hljs-keyword">a</span> graphical IDE.
-            Programming done in Java.<span class="hljs-comment">"</span>
-        },
-        {
-            <span class="hljs-string">"course_code"</span>: <span class="hljs-string">"MATH141"</span>,
-            <span class="hljs-string">"name"</span>: <span class="hljs-string">"Calculus II"</span>,
-            <span class="hljs-string">"min_credits"</span>: <span class="hljs-number">4</span>,
-            <span class="hljs-string">"max_credits"</span>: null,
-            <span class="hljs-string">"gen_eds"</span>: null,
-            <span class="hljs-string">"conditions"</span>: [
-            <span class="hljs-string">"Prerequisite: Minimum grade of C- in MATH140."</span>
-            ],
-            <span class="hljs-string">"description"</span>: <span class="hljs-comment">"Continuation of MATH140, including techniques of</span>
-            integration, improper integrals, applications of integration (such <span class="hljs-keyword">as</span>
-            volumes, work, arc length, moments), inverse functions, exponential <span class="hljs-built_in">and</span>
-            logarithmic functions, sequences <span class="hljs-built_in">and</span> series.<span class="hljs-comment">"</span>
-        }
-        ]
-        </code></pre><h5 id="getting-courses-that-satisfy-gen-ed-requirements">Getting courses that satisfy Gen-Ed requirements</h5>
+<pre><code>[
+  {
+    &quot;course_code&quot;: &quot;CMSC131&quot;,
+    &quot;name&quot;: &quot;Object-Oriented Programming I&quot;,
+    &quot;min_credits&quot;: 4,
+    &quot;max_credits&quot;: null,
+    &quot;gen_eds&quot;: null,
+    &quot;conditions&quot;: [
+      &quot;Corequisite: MATH140. &quot;,
+      &quot;Credit only granted for: CMSC131, CMSC133 or CMSC141.&quot;
+    ],
+    &quot;description&quot;: &quot;Introduction to programming and computer science.
+    Emphasizes understanding and implementation of applications using
+    object-oriented techniques. Develops skills such as program design and
+    testing as well as implementation of programs using a graphical IDE.
+    Programming done in Java.&quot;
+  },
+  {
+    &quot;course_code&quot;: &quot;MATH141&quot;,
+    &quot;name&quot;: &quot;Calculus II&quot;,
+    &quot;min_credits&quot;: 4,
+    &quot;max_credits&quot;: null,
+    &quot;gen_eds&quot;: null,
+    &quot;conditions&quot;: [
+      &quot;Prerequisite: Minimum grade of C- in MATH140.&quot;
+    ],
+    &quot;description&quot;: &quot;Continuation of MATH140, including techniques of
+    integration, improper integrals, applications of integration (such as
+    volumes, work, arc length, moments), inverse functions, exponential and
+    logarithmic functions, sequences and series.&quot;
+  }
+]
+</code></pre>
+        <h5 id="getting-courses-that-satisfy-gen-ed-requirements">Getting courses that satisfy Gen-Ed requirements</h5>
         <p>Request: <code>GET http://api.jupiterp.com/v0/courses?genEds=DVUP,DSSP&amp;limit=2&amp;sortBy=courseCode.asc</code></p>
         <p>Response:</p>
-        <pre><code>[
-        {
-            <span class="hljs-comment">"course_code"</span>: <span class="hljs-comment">"AAST351"</span>,
-            <span class="hljs-comment">"name"</span>: <span class="hljs-comment">"Asian Americans and Media"</span>,
-            <span class="hljs-comment">"min_credits"</span>: <span class="hljs-number">3</span>,
-            <span class="hljs-comment">"max_credits"</span>: null,
-            <span class="hljs-comment">"gen_eds"</span>: [
-            <span class="hljs-comment">"DSSP"</span>,
-            <span class="hljs-comment">"DVUP"</span>
-            ],
-            <span class="hljs-comment">"conditions"</span>: [
-            <span class="hljs-comment">"Credit only granted for: AAST351, AAST398M or AAST398N. "</span>,
-            <span class="hljs-comment">"Formerly: AAST398M, AAST398N."</span>
-            ],
-            <span class="hljs-comment">"description"</span>: <span class="hljs-comment">"From yellow peril invaders to model minority allies, Asian 
-            Americans have crafted their own dynamic cultural expressions in a number 
-            of media from film, television, and music to fashion, sports, and food that
-            reveal and contest the contradictions of the U.S. nation-state. Asian
-            American culture also uniquely sits at the nexus of immigration flows and
-            digital technologies, providing a transnational lens to view the US place
-            in the world. This advanced course, then, will introduce students to the
-            study and practice of Asian American culture as multiple , hybrid, and
-            heterogeneous. It will do so through three sections: section one will
-            introduce students to classical, cultural, and media concepts as well as
-            relevant keywords outlined by Asian American Studies scholars; section two
-            will review the work of Asian American cultural theorists; section three
-            will focus on analyses of particular Asian American cultural productions.
-            In doing so, students will gain an understanding of the shifting and
-            interlocking tensions among the local, the national, and the global that
-            form the cultural geographies of Asian America."</span>
-        },
-        {
-            <span class="hljs-comment">"course_code"</span>: <span class="hljs-comment">"AMST320"</span>,
-            <span class="hljs-comment">"name"</span>: <span class="hljs-comment">"(Dis)ability in American Film"</span>,
-            <span class="hljs-comment">"min_credits"</span>: <span class="hljs-number">3</span>,
-            <span class="hljs-comment">"max_credits"</span>: null,
-            <span class="hljs-comment">"gen_eds"</span>: [
-            <span class="hljs-comment">"DSHU"</span>,
-            <span class="hljs-comment">"DSSP"</span>,
-            <span class="hljs-comment">"DVUP"</span>
-            ],
-            <span class="hljs-comment">"conditions"</span>: [
-            <span class="hljs-comment">"Credit only granted for: AMST320 or AMST328X. "</span>,
-            <span class="hljs-comment">"Formerly: AMST328X."</span>
-            ],
-            <span class="hljs-comment">"description"</span>: <span class="hljs-comment">"Explores the connection between film and disability
-            through an analysis of independent and mainstream American films in various
-            film genres. Specifically, we will consider how these film representations
-            reflect and/or challenge the shifting social perspectives of disability
-            over the 20th and 21st centuries.  Beginning with the presentation of
-            disability as theatrical spectacle in the traveling sideshow and early
-            cinema, we will work our way through film history to develop an
-            understanding of our society's complicated relationship with disability."</span>
-        }
-        ]
-        </code></pre><h3 id="-v0-courses-minified-"><code>/v0/courses/minified</code></h3>
+<pre><code>[
+  {
+    &quot;course_code&quot;: &quot;AAST351&quot;,
+    &quot;name&quot;: &quot;Asian Americans and Media&quot;,
+    &quot;min_credits&quot;: 3,
+    &quot;max_credits&quot;: null,
+    &quot;gen_eds&quot;: [
+      &quot;DSSP&quot;,
+      &quot;DVUP&quot;
+    ],
+    &quot;conditions&quot;: [
+      &quot;Credit only granted for: AAST351, AAST398M or AAST398N. &quot;,
+      &quot;Formerly: AAST398M, AAST398N.&quot;
+    ],
+    &quot;description&quot;: &quot;From yellow peril invaders to model minority allies, Asian 
+    Americans have crafted their own dynamic cultural expressions in a number 
+    of media from film, television, and music to fashion, sports, and food that
+    reveal and contest the contradictions of the U.S. nation-state. Asian
+    American culture also uniquely sits at the nexus of immigration flows and
+    digital technologies, providing a transnational lens to view the US place
+    in the world. This advanced course, then, will introduce students to the
+    study and practice of Asian American culture as multiple , hybrid, and
+    heterogeneous. It will do so through three sections: section one will
+    introduce students to classical, cultural, and media concepts as well as
+    relevant keywords outlined by Asian American Studies scholars; section two
+    will review the work of Asian American cultural theorists; section three
+    will focus on analyses of particular Asian American cultural productions.
+    In doing so, students will gain an understanding of the shifting and
+    interlocking tensions among the local, the national, and the global that
+    form the cultural geographies of Asian America.&quot;
+  },
+  {
+    &quot;course_code&quot;: &quot;AMST320&quot;,
+    &quot;name&quot;: &quot;(Dis)ability in American Film&quot;,
+    &quot;min_credits&quot;: 3,
+    &quot;max_credits&quot;: null,
+    &quot;gen_eds&quot;: [
+      &quot;DSHU&quot;,
+      &quot;DSSP&quot;,
+      &quot;DVUP&quot;
+    ],
+    &quot;conditions&quot;: [
+      &quot;Credit only granted for: AMST320 or AMST328X. &quot;,
+      &quot;Formerly: AMST328X.&quot;
+    ],
+    &quot;description&quot;: &quot;Explores the connection between film and disability
+    through an analysis of independent and mainstream American films in various
+    film genres. Specifically, we will consider how these film representations
+    reflect and/or challenge the shifting social perspectives of disability
+    over the 20th and 21st centuries.  Beginning with the presentation of
+    disability as theatrical spectacle in the traveling sideshow and early
+    cinema, we will work our way through film history to develop an
+    understanding of our society's complicated relationship with disability.&quot;
+  }
+]
+</code></pre>
+        <h3 id="-v0-courses-minified-"><code>/v0/courses/minified</code></h3>
         <p><a href="#endpoints">(back to endpoints)</a></p>
         <p>Gets a minified list of courses that satisfy the given parameters. Takes the same parameters as the <code>/v0/courses</code> endpoint, but returns only the course code and title.</p>
-        <h4 id="query-parameters">Query parameters</h4>
+        <h4 id="query-parameters-1">Query parameters</h4>
         <p>Same as the parameters for <code>/v0/courses</code>; see <a href="#-v0-courses-">here</a>.</p>
-        <h4 id="output">Output</h4>
+        <h4 id="output-1">Output</h4>
         <table>
         <thead>
         <tr>
@@ -304,28 +308,29 @@
         </tr>
         </tbody>
         </table>
-        <h4 id="examples">Examples</h4>
+        <h4 id="examples-1">Examples</h4>
         <h5 id="getting-courses-with-a-specific-prefix">Getting courses with a specific prefix</h5>
         <p>Request: <code>GET http://api.jupiterp.com/v0/courses/minified?prefix=ASTR4&amp;sortBy=name.asc</code></p>
         <p>Response:</p>
-        <pre><code>[
-        {
-            <span class="hljs-attr">"course_code"</span>: <span class="hljs-string">"ASTR422"</span>,
-            <span class="hljs-attr">"name"</span>: <span class="hljs-string">"Cosmology"</span>
-        },
-        {
-            <span class="hljs-attr">"course_code"</span>: <span class="hljs-string">"ASTR421"</span>,
-            <span class="hljs-attr">"name"</span>: <span class="hljs-string">"Galaxies"</span>
-        },
-        {
-            <span class="hljs-attr">"course_code"</span>: <span class="hljs-string">"ASTR498"</span>,
-            <span class="hljs-attr">"name"</span>: <span class="hljs-string">"Special Problems in Astronomy"</span>
-        }
-        ]
-        </code></pre><h3 id="-v0-courses-withsections-"><code>/v0/courses/withSections</code></h3>
+<pre><code>[
+  {
+    &quot;course_code&quot;: &quot;ASTR422&quot;,
+    &quot;name&quot;: &quot;Cosmology&quot;
+  },
+  {
+    &quot;course_code&quot;: &quot;ASTR421&quot;,
+    &quot;name&quot;: &quot;Galaxies&quot;
+  },
+  {
+    &quot;course_code&quot;: &quot;ASTR498&quot;,
+    &quot;name&quot;: &quot;Special Problems in Astronomy&quot;
+  }
+]
+</code></pre>
+        <h3 id="-v0-courses-withsections-"><code>/v0/courses/withSections</code></h3>
         <p><a href="#endpoints">(back to endpoints)</a></p>
         <p>Gets a list of full courses data and associated sections data. Each returned course also contains a (potentially-empty) list of sections for that course.</p>
-        <h4 id="query-parameters">Query parameters</h4>
+        <h4 id="query-parameters-2">Query parameters</h4>
         <table>
         <thead>
         <tr>
@@ -392,7 +397,7 @@
         </tr>
         </tbody>
         </table>
-        <h4 id="output">Output</h4>
+        <h4 id="output-2">Output</h4>
         <table>
         <thead>
         <tr>
@@ -444,61 +449,62 @@
         </tr>
         </tbody>
         </table>
-        <h4 id="examples">Examples</h4>
+        <h4 id="examples-2">Examples</h4>
         <h5 id="getting-a-course-with-sections-data">Getting a course with sections data</h5>
         <p>Request: <code>GET http://api.jupiterp.com/v0/courses/withSections?courseCodes=CMSC433</code></p>
         <p>Response:</p>
-        <pre><code>[
-        {
-            <span class="hljs-string">"course_code"</span>: <span class="hljs-string">"CMSC433"</span>,
-            <span class="hljs-string">"name"</span>: <span class="hljs-string">"Programming Language Technologies and Paradigms"</span>,
-            <span class="hljs-string">"min_credits"</span>: <span class="hljs-number">3</span>,
-            <span class="hljs-string">"max_credits"</span>: null,
-            <span class="hljs-string">"gen_eds"</span>: null,
-            <span class="hljs-string">"conditions"</span>: [
-            <span class="hljs-string">"Prerequisite: Minimum grade of C- in CMSC330; or must be in the
-            (Computer Science (Doctoral), Computer Science (Master's)) program. "</span>,
-            <span class="hljs-string">"Restriction: Permission of CMNS-Computer Science department."</span>
-            ],
-            <span class="hljs-string">"description"</span>: <span class="hljs-string">"Programming language technologies (e.g., object-oriented
-            programming), their implementations and use in software design and
-            implementation."</span>,
-            <span class="hljs-string">"sections"</span>: [
-            {
-                <span class="hljs-string">"holdfile"</span>: <span class="hljs-number">0</span>,
-                <span class="hljs-string">"meetings"</span>: [
-                <span class="hljs-string">"TuTh-11:00am-12:15pm-CSI-1115"</span>
-                ],
-                <span class="hljs-string">"sec_code"</span>: <span class="hljs-string">"0101"</span>,
-                <span class="hljs-string">"waitlist"</span>: <span class="hljs-number">3</span>,
-                <span class="hljs-string">"open_seats"</span>: <span class="hljs-number">0</span>,
-                <span class="hljs-string">"course_code"</span>: <span class="hljs-string">"CMSC433"</span>,
-                <span class="hljs-string">"instructors"</span>: [
-                <span class="hljs-string">"Anwar Mamat"</span>
-                ],
-                <span class="hljs-string">"total_seats"</span>: <span class="hljs-number">140</span>
-            },
-            {
-                <span class="hljs-string">"holdfile"</span>: null,
-                <span class="hljs-string">"meetings"</span>: [
-                <span class="hljs-string">"TuTh-3:30pm-4:45pm-IRB-0318"</span>
-                ],
-                <span class="hljs-string">"sec_code"</span>: <span class="hljs-string">"0201"</span>,
-                <span class="hljs-string">"waitlist"</span>: <span class="hljs-number">0</span>,
-                <span class="hljs-string">"open_seats"</span>: <span class="hljs-number">7</span>,
-                <span class="hljs-string">"course_code"</span>: <span class="hljs-string">"CMSC433"</span>,
-                <span class="hljs-string">"instructors"</span>: [
-                <span class="hljs-string">"Anwar Mamat"</span>
-                ],
-                <span class="hljs-string">"total_seats"</span>: <span class="hljs-number">50</span>
-            }
-            ]
-        }
-        ]
-        </code></pre><h3 id="-v0-sections-"><code>/v0/sections</code></h3>
+<pre><code>[
+  {
+    &quot;course_code&quot;: &quot;CMSC433&quot;,
+    &quot;name&quot;: &quot;Programming Language Technologies and Paradigms&quot;,
+    &quot;min_credits&quot;: 3,
+    &quot;max_credits&quot;: null,
+    &quot;gen_eds&quot;: null,
+    &quot;conditions&quot;: [
+      &quot;Prerequisite: Minimum grade of C- in CMSC330; or must be in the
+      (Computer Science (Doctoral), Computer Science (Master's)) program. &quot;,
+      &quot;Restriction: Permission of CMNS-Computer Science department.&quot;
+    ],
+    &quot;description&quot;: &quot;Programming language technologies (e.g., object-oriented
+    programming), their implementations and use in software design and
+    implementation.&quot;,
+    &quot;sections&quot;: [
+      {
+        &quot;holdfile&quot;: 0,
+        &quot;meetings&quot;: [
+          &quot;TuTh-11:00am-12:15pm-CSI-1115&quot;
+        ],
+        &quot;sec_code&quot;: &quot;0101&quot;,
+        &quot;waitlist&quot;: 3,
+        &quot;open_seats&quot;: 0,
+        &quot;course_code&quot;: &quot;CMSC433&quot;,
+        &quot;instructors&quot;: [
+          &quot;Anwar Mamat&quot;
+        ],
+        &quot;total_seats&quot;: 140
+      },
+      {
+        &quot;holdfile&quot;: null,
+        &quot;meetings&quot;: [
+          &quot;TuTh-3:30pm-4:45pm-IRB-0318&quot;
+        ],
+        &quot;sec_code&quot;: &quot;0201&quot;,
+        &quot;waitlist&quot;: 0,
+        &quot;open_seats&quot;: 7,
+        &quot;course_code&quot;: &quot;CMSC433&quot;,
+        &quot;instructors&quot;: [
+          &quot;Anwar Mamat&quot;
+        ],
+        &quot;total_seats&quot;: 50
+      }
+    ]
+  }
+]
+</code></pre>
+        <h3 id="-v0-sections-"><code>/v0/sections</code></h3>
         <p><a href="#endpoints">(back to endpoints)</a></p>
-        <p>Get sections for specific courses, or for all courses that match a course code prefix. Note that some courses don&#39;t have any sections; for example, most independent research courses, like ASTR498, will not return any sections.</p>
-        <h4 id="query-parameters">Query parameters</h4>
+        <p>Get sections for specific courses, or for all courses that match a course code prefix. Note that some courses don't have any sections; for example, most independent research courses, like ASTR498, will not return any sections.</p>
+        <h4 id="query-parameters-3">Query parameters</h4>
         <table>
         <thead>
         <tr>
@@ -550,7 +556,7 @@
         </tr>
         </tbody>
         </table>
-        <h4 id="output">Output</h4>
+        <h4 id="output-3">Output</h4>
         <table>
         <thead>
         <tr>
@@ -602,44 +608,45 @@
         </tr>
         </tbody>
         </table>
-        <h4 id="examples">Examples</h4>
+        <h4 id="examples-3">Examples</h4>
         <h5 id="getting-all-sections-for-a-course">Getting all sections for a course</h5>
         <p>Request: <code>GET http://api.jupiterp.com/v0/sections?courseCodes=CMSC433</code></p>
         <p>Response:</p>
-        <pre><code>[
-        {
-            <span class="hljs-attr">"course_code"</span>: <span class="hljs-string">"CMSC433"</span>,
-            <span class="hljs-attr">"sec_code"</span>: <span class="hljs-string">"0101"</span>,
-            <span class="hljs-attr">"instructors"</span>: [
-            <span class="hljs-string">"Anwar Mamat"</span>
-            ],
-            <span class="hljs-attr">"meetings"</span>: [
-            <span class="hljs-string">"TuTh-11:00am-12:15pm-CSI-1115"</span>
-            ],
-            <span class="hljs-attr">"open_seats"</span>: <span class="hljs-number">0</span>,
-            <span class="hljs-attr">"total_seats"</span>: <span class="hljs-number">140</span>,
-            <span class="hljs-attr">"waitlist"</span>: <span class="hljs-number">7</span>,
-            <span class="hljs-attr">"holdfile"</span>: <span class="hljs-number">0</span>
-        },
-        {
-            <span class="hljs-attr">"course_code"</span>: <span class="hljs-string">"CMSC433"</span>,
-            <span class="hljs-attr">"sec_code"</span>: <span class="hljs-string">"0201"</span>,
-            <span class="hljs-attr">"instructors"</span>: [
-            <span class="hljs-string">"Anwar Mamat"</span>
-            ],
-            <span class="hljs-attr">"meetings"</span>: [
-            <span class="hljs-string">"TuTh-3:30pm-4:45pm-IRB-0318"</span>
-            ],
-            <span class="hljs-attr">"open_seats"</span>: <span class="hljs-number">15</span>,
-            <span class="hljs-attr">"total_seats"</span>: <span class="hljs-number">50</span>,
-            <span class="hljs-attr">"waitlist"</span>: <span class="hljs-number">0</span>,
-            <span class="hljs-attr">"holdfile"</span>: <span class="hljs-literal">null</span>
-        }
-        ]
-        </code></pre><h3 id="-v0-instructors-"><code>/v0/instructors</code></h3>
+<pre><code>[
+  {
+    &quot;course_code&quot;: &quot;CMSC433&quot;,
+    &quot;sec_code&quot;: &quot;0101&quot;,
+    &quot;instructors&quot;: [
+      &quot;Anwar Mamat&quot;
+    ],
+    &quot;meetings&quot;: [
+      &quot;TuTh-11:00am-12:15pm-CSI-1115&quot;
+    ],
+    &quot;open_seats&quot;: 0,
+    &quot;total_seats&quot;: 140,
+    &quot;waitlist&quot;: 7,
+    &quot;holdfile&quot;: 0
+  },
+  {
+    &quot;course_code&quot;: &quot;CMSC433&quot;,
+    &quot;sec_code&quot;: &quot;0201&quot;,
+    &quot;instructors&quot;: [
+      &quot;Anwar Mamat&quot;
+    ],
+    &quot;meetings&quot;: [
+      &quot;TuTh-3:30pm-4:45pm-IRB-0318&quot;
+    ],
+    &quot;open_seats&quot;: 15,
+    &quot;total_seats&quot;: 50,
+    &quot;waitlist&quot;: 0,
+    &quot;holdfile&quot;: null
+  }
+]
+</code></pre>
+        <h3 id="-v0-instructors-"><code>/v0/instructors</code></h3>
         <p><a href="#endpoints">(back to endpoints)</a></p>
         <p>Get a list of all instructors and their average ratings, including instructors not actively teaching any courses.</p>
-        <h4 id="query-parameters">Query parameters</h4>
+        <h4 id="query-parameters-4">Query parameters</h4>
         <table>
         <thead>
         <tr>
@@ -656,8 +663,23 @@
         </tr>
         <tr>
         <td style="text-align:left"><code>instructorSlugs</code> (optional)</td>
-        <td style="text-align:left">A comma-separated list of instructor slugs to get results for; slugs are the internal identifier used to distinguish an instructor and are unique to each instructor. See PlanetTerp API spec for more info. Cannot set both <code>instructorNames</code> and <code>instructorSlugs</code>.</td>
-        <td style="text-align:left"><code>instructorSlugs=testudo,pines</code></td>
+        <td style="text-align:left">A comma-separated list of instructor slugs to get results for; slugs are the internal identifier used to distinguish an instructor and are unique to each instructor. Cannot set both <code>instructorNames</code> and <code>instructorSlugs</code>.</td>
+        <td style="text-align:left"><code>instructorSlugs=shane-walsh,darryll-pines</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>nameSearch</code> (optional)</td>
+        <td style="text-align:left">Case-insensitive substring match on instructor name. Matched against a normalized form of the name, so accents and punctuation are ignored on both sides: <code>obrien</code> matches &quot;O'Brien&quot; and <code>jose</code> matches &quot;José&quot;.</td>
+        <td style="text-align:left"><code>nameSearch=walsh</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>activeOnly</code> (optional)</td>
+        <td style="text-align:left">If true, only returns instructors currently teaching at least one section.</td>
+        <td style="text-align:left"><code>activeOnly=true</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>count</code> (optional)</td>
+        <td style="text-align:left">If true, the total number of matching records is returned in the <code>Content-Range</code> response header (<code>0-49/4812</code>). Costs an extra aggregate over the filtered set, so it is off by default.</td>
+        <td style="text-align:left"><code>count=true</code></td>
         </tr>
         <tr>
         <td style="text-align:left"><code>ratings</code> (optional)</td>
@@ -681,7 +703,7 @@
         </tr>
         </tbody>
         </table>
-        <h4 id="output">Output</h4>
+        <h4 id="output-4">Output</h4>
         <table>
         <thead>
         <tr>
@@ -699,7 +721,7 @@
         <tr>
         <td style="text-align:left"><code>name</code></td>
         <td style="text-align:center">string</td>
-        <td style="text-align:left">The instructor&#39;s name as listed on PlanetTerp</td>
+        <td style="text-align:left">The instructor's name as listed on PlanetTerp</td>
         </tr>
         <tr>
         <td style="text-align:left"><code>average_rating</code></td>
@@ -708,81 +730,83 @@
         </tr>
         </tbody>
         </table>
-        <h4 id="examples">Examples</h4>
+        <h4 id="examples-4">Examples</h4>
         <h5 id="getting-high-rated-non-5-star-instructors">Getting high-rated, non-5 star instructors</h5>
         <p>Request: <code>GET http://api.jupiterp.com/v0/instructors?ratings=gt.4.5&amp;ratings=lt.5&amp;limit=5&amp;sortBy=average_rating.desc,name.desc</code></p>
         <p>Response:</p>
-        <pre><code>[
-        {
-            <span class="hljs-attr">"slug"</span>: <span class="hljs-string">"gramlich_meredith"</span>,
-            <span class="hljs-attr">"name"</span>: <span class="hljs-string">"Meredith Gramlich"</span>,
-            <span class="hljs-attr">"average_rating"</span>: <span class="hljs-number">4.9667</span>
-        },
-        {
-            <span class="hljs-attr">"slug"</span>: <span class="hljs-string">"cropper"</span>,
-            <span class="hljs-attr">"name"</span>: <span class="hljs-string">"Maureen Cropper"</span>,
-            <span class="hljs-attr">"average_rating"</span>: <span class="hljs-number">4.9474</span>
-        },
-        {
-            <span class="hljs-attr">"slug"</span>: <span class="hljs-string">"gruber_sean"</span>,
-            <span class="hljs-attr">"name"</span>: <span class="hljs-string">"Sean Gruber"</span>,
-            <span class="hljs-attr">"average_rating"</span>: <span class="hljs-number">4.9398</span>
-        },
-        {
-            <span class="hljs-attr">"slug"</span>: <span class="hljs-string">"o’brien"</span>,
-            <span class="hljs-attr">"name"</span>: <span class="hljs-string">"Terrence O’Brien"</span>,
-            <span class="hljs-attr">"average_rating"</span>: <span class="hljs-number">4.9375</span>
-        },
-        {
-            <span class="hljs-attr">"slug"</span>: <span class="hljs-string">"zomback"</span>,
-            <span class="hljs-attr">"name"</span>: <span class="hljs-string">"Jenna Zomback"</span>,
-            <span class="hljs-attr">"average_rating"</span>: <span class="hljs-number">4.9355</span>
-        }
-        ]
-        </code></pre><h3 id="-v0-instructors-active-"><code>/v0/instructors/active</code></h3>
+<pre><code>[
+  {
+    &quot;slug&quot;: &quot;gramlich_meredith&quot;,
+    &quot;name&quot;: &quot;Meredith Gramlich&quot;,
+    &quot;average_rating&quot;: 4.9667
+  },
+  {
+    &quot;slug&quot;: &quot;cropper&quot;,
+    &quot;name&quot;: &quot;Maureen Cropper&quot;,
+    &quot;average_rating&quot;: 4.9474
+  },
+  {
+    &quot;slug&quot;: &quot;gruber_sean&quot;,
+    &quot;name&quot;: &quot;Sean Gruber&quot;,
+    &quot;average_rating&quot;: 4.9398
+  },
+  {
+    &quot;slug&quot;: &quot;o’brien&quot;,
+    &quot;name&quot;: &quot;Terrence O’Brien&quot;,
+    &quot;average_rating&quot;: 4.9375
+  },
+  {
+    &quot;slug&quot;: &quot;zomback&quot;,
+    &quot;name&quot;: &quot;Jenna Zomback&quot;,
+    &quot;average_rating&quot;: 4.9355
+  }
+]
+</code></pre>
+        <h3 id="-v0-instructors-active-"><code>/v0/instructors/active</code></h3>
         <p><a href="#endpoints">(back to endpoints)</a></p>
         <p>Get all instructors that are currently teaching a course, as listed on Testudo.</p>
-        <h4 id="query-parameters">Query Parameters</h4>
+        <h4 id="query-parameters-5">Query Parameters</h4>
         <p>Same as <code>/v0/instructors</code>; see <a href="#-v0-instructors-">here</a>.</p>
-        <h4 id="output">Output</h4>
+        <h4 id="output-5">Output</h4>
         <p>Same as <code>/v0/instructors</code>; see <a href="#-v0-instructors-">here</a>.</p>
-        <h4 id="examples">Examples</h4>
+        <h4 id="examples-5">Examples</h4>
         <h5 id="getting-instructors-currently-teaching-a-course">Getting instructors currently teaching a course</h5>
         <p>Request: <code>GET http://api.jupiterp.com/v0/instructors/active?limit=5</code></p>
         <p>Response:</p>
-        <pre><code>[
-        {
-            <span class="hljs-attr">"slug"</span>: <span class="hljs-string">"abadi_daniel"</span>,
-            <span class="hljs-attr">"name"</span>: <span class="hljs-string">"Daniel Abadi"</span>,
-            <span class="hljs-attr">"average_rating"</span>: <span class="hljs-number">3.122</span>
-        },
-        {
-            <span class="hljs-attr">"slug"</span>: <span class="hljs-string">"abasi"</span>,
-            <span class="hljs-attr">"name"</span>: <span class="hljs-string">"Ali Abasi"</span>,
-            <span class="hljs-attr">"average_rating"</span>: <span class="hljs-literal">null</span>
-        },
-        {
-            <span class="hljs-attr">"slug"</span>: <span class="hljs-string">"abbasi"</span>,
-            <span class="hljs-attr">"name"</span>: <span class="hljs-string">"Hossein Abbasi"</span>,
-            <span class="hljs-attr">"average_rating"</span>: <span class="hljs-number">3.7791</span>
-        },
-        {
-            <span class="hljs-attr">"slug"</span>: <span class="hljs-string">"abdul-alim"</span>,
-            <span class="hljs-attr">"name"</span>: <span class="hljs-string">"Jamaal Abdul-Alim"</span>,
-            <span class="hljs-attr">"average_rating"</span>: <span class="hljs-number">3.25</span>
-        },
-        {
-            <span class="hljs-attr">"slug"</span>: <span class="hljs-string">"abioye"</span>,
-            <span class="hljs-attr">"name"</span>: <span class="hljs-string">"Victor Abioye"</span>,
-            <span class="hljs-attr">"average_rating"</span>: <span class="hljs-literal">null</span>
-        }
-        ]
-        </code></pre><h3 id="-v0-deptlist-"><code>/v0/deptList</code></h3>
+<pre><code>[
+  {
+    &quot;slug&quot;: &quot;abadi_daniel&quot;,
+    &quot;name&quot;: &quot;Daniel Abadi&quot;,
+    &quot;average_rating&quot;: 3.122
+  },
+  {
+    &quot;slug&quot;: &quot;abasi&quot;,
+    &quot;name&quot;: &quot;Ali Abasi&quot;,
+    &quot;average_rating&quot;: null
+  },
+  {
+    &quot;slug&quot;: &quot;abbasi&quot;,
+    &quot;name&quot;: &quot;Hossein Abbasi&quot;,
+    &quot;average_rating&quot;: 3.7791
+  },
+  {
+    &quot;slug&quot;: &quot;abdul-alim&quot;,
+    &quot;name&quot;: &quot;Jamaal Abdul-Alim&quot;,
+    &quot;average_rating&quot;: 3.25
+  },
+  {
+    &quot;slug&quot;: &quot;abioye&quot;,
+    &quot;name&quot;: &quot;Victor Abioye&quot;,
+    &quot;average_rating&quot;: null
+  }
+]
+</code></pre>
+        <h3 id="-v0-deptlist-"><code>/v0/deptList</code></h3>
         <p><a href="#endpoints">(back to endpoints)</a></p>
         <p>Get a list of 4-letter department codes.</p>
-        <h4 id="query-parameters">Query parameters</h4>
+        <h4 id="query-parameters-6">Query parameters</h4>
         <p>None</p>
-        <h4 id="output">Output</h4>
+        <h4 id="output-6">Output</h4>
         <table>
         <thead>
         <tr>
@@ -808,7 +832,7 @@
         <p><a href="#endpoints">(back to endpoints)</a></p>
         <p>Gets grade distributions for individual course sections, as released by the University Registrar under the Maryland Public Information Act. Data covers fall and spring terms from Fall 2010 through Spring 2026; winter and summer terms were not released.</p>
         <p>For counts aggregated across sections, terms, or instructors, use the <code>summary</code> endpoint below.</p>
-        <h4 id="query-parameters">Query parameters</h4>
+        <h4 id="query-parameters-7">Query parameters</h4>
         <table>
         <thead>
         <tr>
@@ -840,7 +864,7 @@
         </tr>
         <tr>
         <td style="text-align:left"><code>instructor</code> (optional)</td>
-        <td style="text-align:left">Return only sections taught by the given instructor, written in "First Last" order. This field is case-sensitive.</td>
+        <td style="text-align:left">Return only sections taught by the given instructor, written in &quot;First Last&quot; order. This field is case-sensitive.</td>
         <td style="text-align:left"><code>instructor=Larry%20Herman</code></td>
         </tr>
         <tr>
@@ -875,7 +899,7 @@
         </tr>
         </tbody>
         </table>
-        <h4 id="output">Output</h4>
+        <h4 id="output-7">Output</h4>
         <table>
         <thead>
         <tr>
@@ -903,12 +927,12 @@
         <tr>
         <td style="text-align:left"><code>instructor</code></td>
         <td style="text-align:center">string or null</td>
-        <td style="text-align:left">The instructor exactly as the Registrar printed them, in "Last, First Middle" order. Null where the release left the field blank.</td>
+        <td style="text-align:left">The instructor exactly as the Registrar printed them, in &quot;Last, First Middle&quot; order. Null where the release left the field blank.</td>
         </tr>
         <tr>
         <td style="text-align:left"><code>instructor_name</code></td>
         <td style="text-align:center">string or null</td>
-        <td style="text-align:left">The effective instructor in "First Last" order, suitable for matching against <code>/v0/instructors</code>. May be populated where <code>instructor</code> is null; see <code>instructor_source</code>.</td>
+        <td style="text-align:left">The effective instructor in &quot;First Last&quot; order, suitable for matching against <code>/v0/instructors</code>. May be populated where <code>instructor</code> is null; see <code>instructor_source</code>.</td>
         </tr>
         <tr>
         <td style="text-align:left"><code>instructor_source</code></td>
@@ -947,46 +971,47 @@
         </tr>
         </tbody>
         </table>
-        <h4 id="examples">Examples</h4>
+        <h4 id="examples-6">Examples</h4>
         <h5 id="getting-every-section-of-a-course-in-one-term">Getting every section of a course in one term</h5>
         <p>Request: <code>GET http://api.jupiterp.com/v0/grades?courseCodes=CMSC132&amp;term=eq.202408&amp;limit=2</code></p>
         <p>Response:</p>
-        <pre><code><span class="hljs-punctuation">[</span>
-          <span class="hljs-punctuation">{</span>
-            <span class="hljs-attr">"term"</span><span class="hljs-punctuation">:</span> <span class="hljs-number">202408</span><span class="hljs-punctuation">,</span>
-            <span class="hljs-attr">"course_code"</span><span class="hljs-punctuation">:</span> <span class="hljs-string">"CMSC132"</span><span class="hljs-punctuation">,</span>
-            <span class="hljs-attr">"sec_code"</span><span class="hljs-punctuation">:</span> <span class="hljs-string">"0101"</span><span class="hljs-punctuation">,</span>
-            <span class="hljs-attr">"instructor"</span><span class="hljs-punctuation">:</span> <span class="hljs-string">"Herman, Larry"</span><span class="hljs-punctuation">,</span>
-            <span class="hljs-attr">"instructor_name"</span><span class="hljs-punctuation">:</span> <span class="hljs-string">"Larry Herman"</span><span class="hljs-punctuation">,</span>
-            <span class="hljs-attr">"instructor_source"</span><span class="hljs-punctuation">:</span> <span class="hljs-string">"reported"</span><span class="hljs-punctuation">,</span>
-            <span class="hljs-attr">"total"</span><span class="hljs-punctuation">:</span> <span class="hljs-number">32</span><span class="hljs-punctuation">,</span>
-            <span class="hljs-attr">"a_plus"</span><span class="hljs-punctuation">:</span> <span class="hljs-number">0</span><span class="hljs-punctuation">,</span>
-            <span class="hljs-attr">"a"</span><span class="hljs-punctuation">:</span> <span class="hljs-number">1</span><span class="hljs-punctuation">,</span>
-            <span class="hljs-attr">"a_minus"</span><span class="hljs-punctuation">:</span> <span class="hljs-number">4</span><span class="hljs-punctuation">,</span>
-            <span class="hljs-attr">"graded"</span><span class="hljs-punctuation">:</span> <span class="hljs-number">30</span><span class="hljs-punctuation">,</span>
-            <span class="hljs-attr">"gpa"</span><span class="hljs-punctuation">:</span> <span class="hljs-number">2.583</span>
-          <span class="hljs-punctuation">}</span><span class="hljs-punctuation">,</span>
-          <span class="hljs-punctuation">{</span>
-            <span class="hljs-attr">"term"</span><span class="hljs-punctuation">:</span> <span class="hljs-number">202408</span><span class="hljs-punctuation">,</span>
-            <span class="hljs-attr">"course_code"</span><span class="hljs-punctuation">:</span> <span class="hljs-string">"CMSC132"</span><span class="hljs-punctuation">,</span>
-            <span class="hljs-attr">"sec_code"</span><span class="hljs-punctuation">:</span> <span class="hljs-string">"0102"</span><span class="hljs-punctuation">,</span>
-            <span class="hljs-attr">"instructor"</span><span class="hljs-punctuation">:</span> <span class="hljs-literal"><span class="hljs-keyword">null</span></span><span class="hljs-punctuation">,</span>
-            <span class="hljs-attr">"instructor_name"</span><span class="hljs-punctuation">:</span> <span class="hljs-string">"Larry Herman"</span><span class="hljs-punctuation">,</span>
-            <span class="hljs-attr">"instructor_source"</span><span class="hljs-punctuation">:</span> <span class="hljs-string">"lead"</span><span class="hljs-punctuation">,</span>
-            <span class="hljs-attr">"total"</span><span class="hljs-punctuation">:</span> <span class="hljs-number">34</span><span class="hljs-punctuation">,</span>
-            <span class="hljs-attr">"a_plus"</span><span class="hljs-punctuation">:</span> <span class="hljs-number">2</span><span class="hljs-punctuation">,</span>
-            <span class="hljs-attr">"a"</span><span class="hljs-punctuation">:</span> <span class="hljs-number">7</span><span class="hljs-punctuation">,</span>
-            <span class="hljs-attr">"a_minus"</span><span class="hljs-punctuation">:</span> <span class="hljs-number">5</span><span class="hljs-punctuation">,</span>
-            <span class="hljs-attr">"graded"</span><span class="hljs-punctuation">:</span> <span class="hljs-number">34</span><span class="hljs-punctuation">,</span>
-            <span class="hljs-attr">"gpa"</span><span class="hljs-punctuation">:</span> <span class="hljs-number">3.118</span>
-          <span class="hljs-punctuation">}</span>
-        <span class="hljs-punctuation">]</span>
-        </code></pre>
+<pre><code>[
+  {
+    &quot;term&quot;: 202408,
+    &quot;course_code&quot;: &quot;CMSC132&quot;,
+    &quot;sec_code&quot;: &quot;0101&quot;,
+    &quot;instructor&quot;: &quot;Herman, Larry&quot;,
+    &quot;instructor_name&quot;: &quot;Larry Herman&quot;,
+    &quot;instructor_source&quot;: &quot;reported&quot;,
+    &quot;total&quot;: 32,
+    &quot;a_plus&quot;: 0,
+    &quot;a&quot;: 1,
+    &quot;a_minus&quot;: 4,
+    &quot;graded&quot;: 30,
+    &quot;gpa&quot;: 2.583
+  },
+  {
+    &quot;term&quot;: 202408,
+    &quot;course_code&quot;: &quot;CMSC132&quot;,
+    &quot;sec_code&quot;: &quot;0102&quot;,
+    &quot;instructor&quot;: null,
+    &quot;instructor_name&quot;: &quot;Larry Herman&quot;,
+    &quot;instructor_source&quot;: &quot;lead&quot;,
+    &quot;total&quot;: 34,
+    &quot;a_plus&quot;: 2,
+    &quot;a&quot;: 7,
+    &quot;a_minus&quot;: 5,
+    &quot;graded&quot;: 34,
+    &quot;gpa&quot;: 3.118
+  }
+]
+</code></pre>
         <p>Note the second record: the release lists the instructor once against the lecture and leaves the discussion sections blank, so <code>instructor</code> is null while <code>instructor_name</code> carries the lecturer's name and <code>instructor_source</code> records that it was inferred.</p>
         <h3 id="-v0-grades-summary-"><code>/v0/grades/summary</code></h3>
         <p><a href="#endpoints">(back to endpoints)</a></p>
-        <p>Gets grade distributions with the individual sections summed together. This is usually the endpoint you want: <code>groupBy=course</code> answers "how hard is this course", <code>groupBy=term</code> answers "has it changed", and <code>groupBy=instructor</code> answers "who should I take it with".</p>
-        <h4 id="query-parameters-1">Query parameters</h4>
+        <p>Gets grade distributions with the individual sections summed together. This is usually the endpoint you want: <code>groupBy=course</code> answers &quot;how hard is this course&quot;, <code>groupBy=term</code> answers &quot;has it changed&quot;, <code>groupBy=instructor</code> answers &quot;who should I take it with&quot;, and <code>groupBy=instructorOverall</code> answers &quot;how does this professor grade in general&quot;.</p>
+        <p>Note that <code>instructorOverall</code> and <code>instructorTerm</code> aggregate across every course, so they take no course filter; passing <code>courseCodes</code>, <code>prefix</code>, or <code>number</code> with them returns 400 rather than silently ignoring the filter.</p>
+        <h4 id="query-parameters-8">Query parameters</h4>
         <table>
         <thead>
         <tr>
@@ -998,8 +1023,8 @@
         <tbody>
         <tr>
         <td style="text-align:left"><code>groupBy</code> (optional)</td>
-        <td style="text-align:left">One of <code>course</code> (default), <code>term</code>, or <code>instructor</code>. <code>course</code> returns one record per course across every term on file; <code>term</code> returns one record per course per term; <code>instructor</code> returns one record per course per instructor.</td>
-        <td style="text-align:left"><code>groupBy=instructor</code></td>
+        <td style="text-align:left">One of <code>course</code> (default), <code>term</code>, <code>instructor</code>, <code>instructorOverall</code>, or <code>instructorTerm</code>. <code>course</code> returns one record per course across every term on file; <code>term</code> one record per course per term; <code>instructor</code> one record per course per instructor; <code>instructorOverall</code> one record per instructor across every course they have taught; <code>instructorTerm</code> one record per instructor per term.</td>
+        <td style="text-align:left"><code>groupBy=instructorOverall</code></td>
         </tr>
         <tr>
         <td style="text-align:left"><code>includeCarried</code> (optional)</td>
@@ -1023,13 +1048,23 @@
         </tr>
         <tr>
         <td style="text-align:left"><code>term</code> (optional)</td>
-        <td style="text-align:left">Equalities/inequalities to filter by term code. Only applied when <code>groupBy=term</code>, since the other groupings are aggregated across every term on file.</td>
+        <td style="text-align:left">Equalities/inequalities to filter by term code. Only valid with <code>groupBy=term</code> or <code>groupBy=instructorTerm</code>; the other groupings aggregate across every term on file and will reject this parameter rather than ignore it.</td>
         <td style="text-align:left"><code>term=gte.202008</code></td>
         </tr>
         <tr>
         <td style="text-align:left"><code>instructor</code> (optional)</td>
-        <td style="text-align:left">Return only the given instructor, in "First Last" order. Only applied when <code>groupBy=instructor</code>. Case-sensitive.</td>
+        <td style="text-align:left">Return only the given instructor, in &quot;First Last&quot; order. Case-sensitive, exact. <strong>Prefer <code>instructorSlug</code>:</strong> the same professor is spelled several different ways across the registrar's grade files, Testudo, and PlanetTerp, so an exact name match silently returns nothing for a large share of instructors. Requires an instructor grouping.</td>
         <td style="text-align:left"><code>instructor=Anwar%20Mamat</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>instructorSlug</code> (optional)</td>
+        <td style="text-align:left">Return only the given instructor, by Jupiterp slug. This resolves through instructor identity rather than string equality, so it cannot miss because of a middle name or an accent. Requires an instructor grouping.</td>
+        <td style="text-align:left"><code>instructorSlug=shane-walsh</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>instructorId</code> (optional)</td>
+        <td style="text-align:left">Return only the given instructor, by numeric id. Requires an instructor grouping.</td>
+        <td style="text-align:left"><code>instructorId=4711</code></td>
         </tr>
         <tr>
         <td style="text-align:left"><code>gpa</code> (optional)</td>
@@ -1038,8 +1073,13 @@
         </tr>
         <tr>
         <td style="text-align:left"><code>minStudents</code> (optional)</td>
-        <td style="text-align:left">Exclude groups totalling fewer than this many students.</td>
+        <td style="text-align:left">Exclude groups with fewer than this many students who received a letter grade. Applied to <code>graded</code>, not <code>total</code>: before Fall 2017 the registrar's total includes students whose outcome was never categorized, so it is not comparable across eras, while <code>graded</code> is also the GPA denominator.</td>
         <td style="text-align:left"><code>minStudents=100</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>count</code> (optional)</td>
+        <td style="text-align:left">If true, the total number of matching records is returned in the <code>Content-Range</code> response header.</td>
+        <td style="text-align:left"><code>count=true</code></td>
         </tr>
         <tr>
         <td style="text-align:left"><code>limit</code> (optional)</td>
@@ -1058,7 +1098,7 @@
         </tr>
         </tbody>
         </table>
-        <h4 id="output-1">Output</h4>
+        <h4 id="output-8">Output</h4>
         <p>All groupings return the summed grade buckets (<code>a_plus</code> through <code>other</code>), <code>total</code>, <code>graded</code>, and <code>gpa</code>, defined exactly as on <code>/v0/grades</code>. In addition:</p>
         <table>
         <thead>
@@ -1082,7 +1122,22 @@
         <tr>
         <td style="text-align:left"><code>instructor</code></td>
         <td style="text-align:center">string</td>
-        <td style="text-align:left">Only present when <code>groupBy=instructor</code>; the instructor in "First Last" order.</td>
+        <td style="text-align:left">Present on the instructor groupings; the instructor's canonical display name.</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>instructor_id</code></td>
+        <td style="text-align:center">int</td>
+        <td style="text-align:left">Present on the instructor groupings; the Jupiterp instructor id.</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>instructor_slug</code></td>
+        <td style="text-align:center">string</td>
+        <td style="text-align:left">Present on the instructor groupings; the Jupiterp slug, which is the professor page URL segment.</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>course_count</code></td>
+        <td style="text-align:center">int</td>
+        <td style="text-align:left">Only present when <code>groupBy=instructorOverall</code> or <code>instructorTerm</code>; how many distinct courses are represented.</td>
         </tr>
         <tr>
         <td style="text-align:left"><code>section_count</code></td>
@@ -1101,70 +1156,70 @@
         </tr>
         </tbody>
         </table>
-        <h4 id="examples-1">Examples</h4>
+        <h4 id="examples-7">Examples</h4>
         <h5 id="how-hard-is-a-course-over-its-whole-history">How hard is a course, over its whole history</h5>
         <p>Request: <code>GET http://api.jupiterp.com/v0/grades/summary?courseCodes=CMSC351</code></p>
         <p>Response:</p>
-        <pre><code>[
-          {
-            <span class="hljs-attr">"course_code":</span> <span class="hljs-string">"CMSC351"</span>,
-            <span class="hljs-attr">"section_count":</span> <span class="hljs-number">97</span>,
-            <span class="hljs-attr">"term_count":</span> <span class="hljs-number">32</span>,
-            <span class="hljs-attr">"first_term":</span> <span class="hljs-number">201008</span>,
-            <span class="hljs-attr">"last_term":</span> <span class="hljs-number">202601</span>,
-            <span class="hljs-attr">"total":</span> <span class="hljs-number">14969</span>,
-            <span class="hljs-attr">"graded":</span> <span class="hljs-number">13346</span>,
-            <span class="hljs-attr">"a_plus":</span> <span class="hljs-number">450</span>,
-            <span class="hljs-attr">"a":</span> <span class="hljs-number">1578</span>,
-            <span class="hljs-attr">"a_minus":</span> <span class="hljs-number">1153</span>,
-            <span class="hljs-attr">"b_plus":</span> <span class="hljs-number">1313</span>,
-            <span class="hljs-attr">"b":</span> <span class="hljs-number">2169</span>,
-            <span class="hljs-attr">"b_minus":</span> <span class="hljs-number">1441</span>,
-            <span class="hljs-attr">"c_plus":</span> <span class="hljs-number">1263</span>,
-            <span class="hljs-attr">"c":</span> <span class="hljs-number">1583</span>,
-            <span class="hljs-attr">"c_minus":</span> <span class="hljs-number">1002</span>,
-            <span class="hljs-attr">"d_plus":</span> <span class="hljs-number">185</span>,
-            <span class="hljs-attr">"d":</span> <span class="hljs-number">846</span>,
-            <span class="hljs-attr">"d_minus":</span> <span class="hljs-number">70</span>,
-            <span class="hljs-attr">"f":</span> <span class="hljs-number">293</span>,
-            <span class="hljs-attr">"w":</span> <span class="hljs-number">738</span>,
-            <span class="hljs-attr">"other":</span> <span class="hljs-number">791</span>,
-            <span class="hljs-attr">"gpa":</span> <span class="hljs-number">2.699</span>
-          }
-        ]
-        </code></pre>
+<pre><code>[
+  {
+    &quot;course_code&quot;: &quot;CMSC351&quot;,
+    &quot;section_count&quot;: 97,
+    &quot;term_count&quot;: 32,
+    &quot;first_term&quot;: 201008,
+    &quot;last_term&quot;: 202601,
+    &quot;total&quot;: 14969,
+    &quot;graded&quot;: 13346,
+    &quot;a_plus&quot;: 450,
+    &quot;a&quot;: 1578,
+    &quot;a_minus&quot;: 1153,
+    &quot;b_plus&quot;: 1313,
+    &quot;b&quot;: 2169,
+    &quot;b_minus&quot;: 1441,
+    &quot;c_plus&quot;: 1263,
+    &quot;c&quot;: 1583,
+    &quot;c_minus&quot;: 1002,
+    &quot;d_plus&quot;: 185,
+    &quot;d&quot;: 846,
+    &quot;d_minus&quot;: 70,
+    &quot;f&quot;: 293,
+    &quot;w&quot;: 738,
+    &quot;other&quot;: 791,
+    &quot;gpa&quot;: 2.699
+  }
+]
+</code></pre>
         <h5 id="comparing-instructors-for-a-course">Comparing instructors for a course</h5>
         <p>Request: <code>GET http://api.jupiterp.com/v0/grades/summary?groupBy=instructor&amp;courseCodes=CMSC330&amp;minStudents=1000&amp;sortBy=gpa.desc</code></p>
         <p>Response:</p>
-        <pre><code>[
-          {
-            <span class="hljs-string">"course_code"</span>: <span class="hljs-string">"CMSC330"</span>,
-            <span class="hljs-string">"instructor"</span>: <span class="hljs-string">"Michael W. Hicks"</span>,
-            <span class="hljs-string">"section_count"</span>: <span class="hljs-number">37</span>,
-            <span class="hljs-string">"term_count"</span>: <span class="hljs-number">7</span>,
-            <span class="hljs-string">"first_term"</span>: <span class="hljs-number">201301</span>,
-            <span class="hljs-string">"last_term"</span>: <span class="hljs-number">202101</span>,
-            <span class="hljs-string">"total"</span>: <span class="hljs-number">1205</span>,
-            <span class="hljs-string">"graded"</span>: <span class="hljs-number">1076</span>,
-            <span class="hljs-string">"gpa"</span>: <span class="hljs-number">3.123</span>
-          },
-          {
-            <span class="hljs-string">"course_code"</span>: <span class="hljs-string">"CMSC330"</span>,
-            <span class="hljs-string">"instructor"</span>: <span class="hljs-string">"Roger D. Eastman"</span>,
-            <span class="hljs-string">"section_count"</span>: <span class="hljs-number">39</span>,
-            <span class="hljs-string">"term_count"</span>: <span class="hljs-number">5</span>,
-            <span class="hljs-string">"first_term"</span>: <span class="hljs-number">201808</span>,
-            <span class="hljs-string">"last_term"</span>: <span class="hljs-number">202108</span>,
-            <span class="hljs-string">"total"</span>: <span class="hljs-number">1258</span>,
-            <span class="hljs-string">"graded"</span>: <span class="hljs-number">1045</span>,
-            <span class="hljs-string">"gpa"</span>: <span class="hljs-number">3.047</span>
-          }
-        ]
-        </code></pre>
+<pre><code>[
+  {
+    &quot;course_code&quot;: &quot;CMSC330&quot;,
+    &quot;instructor&quot;: &quot;Michael W. Hicks&quot;,
+    &quot;section_count&quot;: 37,
+    &quot;term_count&quot;: 7,
+    &quot;first_term&quot;: 201301,
+    &quot;last_term&quot;: 202101,
+    &quot;total&quot;: 1205,
+    &quot;graded&quot;: 1076,
+    &quot;gpa&quot;: 3.123
+  },
+  {
+    &quot;course_code&quot;: &quot;CMSC330&quot;,
+    &quot;instructor&quot;: &quot;Roger D. Eastman&quot;,
+    &quot;section_count&quot;: 39,
+    &quot;term_count&quot;: 5,
+    &quot;first_term&quot;: 201808,
+    &quot;last_term&quot;: 202108,
+    &quot;total&quot;: 1258,
+    &quot;graded&quot;: 1045,
+    &quot;gpa&quot;: 3.047
+  }
+]
+</code></pre>
         <h3 id="-v0-grades-terms-"><code>/v0/grades/terms</code></h3>
         <p><a href="#endpoints">(back to endpoints)</a></p>
         <p>Gets every term for which grade data has been loaded, newest first. Takes no parameters. Useful for discovering coverage before querying, since the released data covers fall and spring only.</p>
-        <h4 id="output-2">Output</h4>
+        <h4 id="output-9">Output</h4>
         <table>
         <thead>
         <tr>
@@ -1209,25 +1264,25 @@
         <h4 id="example">Example</h4>
         <p>Request: <code>GET http://api.jupiterp.com/v0/grades/terms</code></p>
         <p>Response:</p>
-        <pre><code>[
-          {
-            <span class="hljs-attr">"term":</span> <span class="hljs-number">202601</span>,
-            <span class="hljs-attr">"section_count":</span> <span class="hljs-number">6543</span>,
-            <span class="hljs-attr">"course_count":</span> <span class="hljs-number">3213</span>,
-            <span class="hljs-attr">"total":</span> <span class="hljs-number">168366</span>,
-            <span class="hljs-attr">"graded":</span> <span class="hljs-number">161397</span>,
-            <span class="hljs-attr">"gpa":</span> <span class="hljs-number">3.488</span>
-          },
-          {
-            <span class="hljs-attr">"term":</span> <span class="hljs-number">202508</span>,
-            <span class="hljs-attr">"section_count":</span> <span class="hljs-number">7056</span>,
-            <span class="hljs-attr">"course_count":</span> <span class="hljs-number">3263</span>,
-            <span class="hljs-attr">"total":</span> <span class="hljs-number">186608</span>,
-            <span class="hljs-attr">"graded":</span> <span class="hljs-number">176931</span>,
-            <span class="hljs-attr">"gpa":</span> <span class="hljs-number">3.503</span>
-          }
-        ]
-        </code></pre>
+<pre><code>[
+  {
+    &quot;term&quot;: 202601,
+    &quot;section_count&quot;: 6543,
+    &quot;course_count&quot;: 3213,
+    &quot;total&quot;: 168366,
+    &quot;graded&quot;: 161397,
+    &quot;gpa&quot;: 3.488
+  },
+  {
+    &quot;term&quot;: 202508,
+    &quot;section_count&quot;: 7056,
+    &quot;course_count&quot;: 3263,
+    &quot;total&quot;: 186608,
+    &quot;graded&quot;: 176931,
+    &quot;gpa&quot;: 3.503
+  }
+]
+</code></pre>
 
-
+    </body>
 </html>
