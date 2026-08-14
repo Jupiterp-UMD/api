@@ -382,7 +382,10 @@ Get a list of all instructors and their average ratings, including instructors n
 | param | description | example |
 |:--|:--|:--|
 | `instructorNames` (optional) | A comma-separated list of instructor names to get results for. Cannot set both `instructorNames` and `instructorSlugs`. | `instructorNames=Testudo%20Terrapin,Darryll%20Pines` |
-| `instructorSlugs` (optional) | A comma-separated list of instructor slugs to get results for; slugs are the internal identifier used to distinguish an instructor and are unique to each instructor. See PlanetTerp API spec for more info. Cannot set both `instructorNames` and `instructorSlugs`. | `instructorSlugs=testudo,pines` |
+| `instructorSlugs` (optional) | A comma-separated list of instructor slugs to get results for; slugs are the internal identifier used to distinguish an instructor and are unique to each instructor. Cannot set both `instructorNames` and `instructorSlugs`. | `instructorSlugs=shane-walsh,darryll-pines` |
+| `nameSearch` (optional) | Case-insensitive substring match on instructor name. Matched against a normalized form of the name, so accents and punctuation are ignored on both sides: `obrien` matches "O'Brien" and `jose` matches "José". | `nameSearch=walsh` |
+| `activeOnly` (optional) | If true, only returns instructors currently teaching at least one section. | `activeOnly=true` |
+| `count` (optional) | If true, the total number of matching records is returned in the `Content-Range` response header (`0-49/4812`). Costs an extra aggregate over the filtered set, so it is off by default. | `count=true` |
 | `ratings` (optional) | A string of equalities/inequalities to filter instructors by their average rating on PlanetTerp. Possible equality/inequality expressions are: eq, lte, lt, gt, gte, neq (for equal to, less than or equal to, less than, etc.). For multiple conditions, use multiple ratings arguments. | `ratings=gt.3.14&ratings=lt.5` |
 | `limit` (optional) | The number of results to return. Defaults to 100, maximum of 500. | `limit=10`|
 |`offset` (optional) | How many records to skip when returning results; defaults to 0 | `offset=5` |
@@ -587,21 +590,26 @@ Note the second record: the release lists the instructor once against the lectur
 
 [(back to endpoints)](#endpoints)
 
-Gets grade distributions with the individual sections summed together. This is usually the endpoint you want: `groupBy=course` answers "how hard is this course", `groupBy=term` answers "has it changed", and `groupBy=instructor` answers "who should I take it with".
+Gets grade distributions with the individual sections summed together. This is usually the endpoint you want: `groupBy=course` answers "how hard is this course", `groupBy=term` answers "has it changed", `groupBy=instructor` answers "who should I take it with", and `groupBy=instructorOverall` answers "how does this professor grade in general".
+
+Note that `instructorOverall` and `instructorTerm` aggregate across every course, so they take no course filter; passing `courseCodes`, `prefix`, or `number` with them returns 400 rather than silently ignoring the filter.
 
 #### Query parameters
 
 | param | description | example |
 |:--|:--|:--|
-| `groupBy` (optional) | One of `course` (default), `term`, or `instructor`. `course` returns one record per course across every term on file; `term` returns one record per course per term; `instructor` returns one record per course per instructor. | `groupBy=instructor` |
+| `groupBy` (optional) | One of `course` (default), `term`, `instructor`, `instructorOverall`, or `instructorTerm`. `course` returns one record per course across every term on file; `term` one record per course per term; `instructor` one record per course per instructor; `instructorOverall` one record per instructor across every course they have taught; `instructorTerm` one record per instructor per term. | `groupBy=instructorOverall` |
 | `includeCarried` (optional) | Only meaningful with `groupBy=instructor`. When true, also counts sections whose instructor was carried across lecture groups (`instructor_source` of `course`). Wider coverage, lower confidence. Defaults to false. | `includeCarried=true` |
 | `courseCodes` (optional) | A string of one or multiple comma-separated course codes; cannot be combined with `prefix` or `number`. | `courseCodes=CMSC132` |
 | `prefix` (optional) | The course prefix to match records to. | `prefix=CMSC3` |
 | `number` (optional) | The course number to search for across multiple departments. | `number=433` |
-| `term` (optional) | Equalities/inequalities to filter by term code. Only applied when `groupBy=term`, since the other groupings are aggregated across every term on file. | `term=gte.202008` |
-| `instructor` (optional) | Return only the given instructor, in "First Last" order. Only applied when `groupBy=instructor`. Case-sensitive. | `instructor=Anwar%20Mamat` |
+| `term` (optional) | Equalities/inequalities to filter by term code. Only valid with `groupBy=term` or `groupBy=instructorTerm`; the other groupings aggregate across every term on file and will reject this parameter rather than ignore it. | `term=gte.202008` |
+| `instructor` (optional) | Return only the given instructor, in "First Last" order. Case-sensitive, exact. **Prefer `instructorSlug`:** the same professor is spelled several different ways across the registrar's grade files, Testudo, and PlanetTerp, so an exact name match silently returns nothing for a large share of instructors. Requires an instructor grouping. | `instructor=Anwar%20Mamat` |
+| `instructorSlug` (optional) | Return only the given instructor, by Jupiterp slug. This resolves through instructor identity rather than string equality, so it cannot miss because of a middle name or an accent. Requires an instructor grouping. | `instructorSlug=shane-walsh` |
+| `instructorId` (optional) | Return only the given instructor, by numeric id. Requires an instructor grouping. | `instructorId=4711` |
 | `gpa` (optional) | Equalities/inequalities to filter by the aggregated GPA. | `gpa=gte.3.0` |
-| `minStudents` (optional) | Exclude groups totalling fewer than this many students. | `minStudents=100` |
+| `minStudents` (optional) | Exclude groups with fewer than this many students who received a letter grade. Applied to `graded`, not `total`: before Fall 2017 the registrar's total includes students whose outcome was never categorized, so it is not comparable across eras, while `graded` is also the GPA denominator. | `minStudents=100` |
+| `count` (optional) | If true, the total number of matching records is returned in the `Content-Range` response header. | `count=true` |
 | `limit` (optional) | Maximum number of records to return; defaults to 100, maximum of 500. | `limit=10` |
 | `offset` (optional) | How many records to skip; defaults to 0. | `offset=10` |
 | `sortBy` (optional) | A comma-separated list of which columns to sort by. | `sortBy=gpa.desc` |
@@ -614,7 +622,10 @@ All groupings return the summed grade buckets (`a_plus` through `other`), `total
 | :-- | :--: | :-- |
 | `course_code` | string | The course these counts are for. |
 | `term` | int | Only present when `groupBy=term`. |
-| `instructor` | string | Only present when `groupBy=instructor`; the instructor in "First Last" order. |
+| `instructor` | string | Present on the instructor groupings; the instructor's canonical display name. |
+| `instructor_id` | int | Present on the instructor groupings; the Jupiterp instructor id. |
+| `instructor_slug` | string | Present on the instructor groupings; the Jupiterp slug, which is the professor page URL segment. |
+| `course_count` | int | Only present when `groupBy=instructorOverall` or `instructorTerm`; how many distinct courses are represented. |
 | `section_count` | int | How many individual sections were summed. |
 | `term_count` | int | How many distinct terms are represented. Not present when `groupBy=term`. |
 | `first_term`, `last_term` | int | The earliest and latest term represented. Not present when `groupBy=term`. |

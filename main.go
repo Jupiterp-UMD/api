@@ -51,9 +51,10 @@ func main() {
 
 	// Create SupabaseClient to connect with DB
 	client := SupabaseClient{
-		Url:   dbUrl,
-		Key:   dbKey,
-		cache: NewLRUCache(defaultCacheCapacity),
+		Url:         dbUrl,
+		Key:         dbKey,
+		cache:       NewLRUCache(defaultCacheCapacity),
+		courseCache: NewLRUCache(courseCacheCapacity),
 	}
 
 	/* ========================== STATIC CONTENT =========================== */
