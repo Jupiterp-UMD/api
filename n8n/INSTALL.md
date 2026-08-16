@@ -79,7 +79,23 @@ on the host instead and swap `$vars.X` for `$env.X` in the workflow nodes).
 
 Credentials → New → *Google Gemini(PaLM) API*. Paste an API key from
 [aistudio.google.com](https://aistudio.google.com/apikey). Open the **Classify**
-node in `review-triage.json` and select it.
+node in `review-triage.json` and select it — the exported JSON has a
+`REPLACE_ME` credential id that will not resolve until you do.
+
+The node is `@n8n/n8n-nodes-langchain.googleGemini`, which ships with the
+LangChain nodes. If it does not appear, that package is not installed on your
+instance.
+
+Two settings on that node matter more than they look:
+
+* **`maxOutputTokens` is 512.** The node default is 16, which truncates the
+  JSON reply mid-object on essentially every call. That is unreadable, so the
+  workflow escalates everything while looking like a cautious classifier rather
+  than a broken one. Do not lower it.
+* **`jsonOutput` is a boolean, not a schema.** This node cannot constrain
+  decoding to an enum, so the contract lives in the system message and is
+  enforced by the `Parse decision` node. See the section on it in `README.md`
+  before editing either.
 
 The model is pinned to `models/gemini-2.0-flash-001`. Leave it pinned. A
 provider silently swapping the model underneath a moderation pipeline is a
@@ -174,6 +190,8 @@ first and auto-approve last.
 | Callback 401s | `TRIAGE_CALLBACK_KEY` mismatch, or it equals the admin key |
 | Callback 409s | A human already decided that review — working as intended |
 | Reviews stuck `pending` | The sweep is not running; check step 9 |
+| Everything escalates, no obvious cause | `maxOutputTokens` too low; replies are truncated |
+| Classify node missing on import | LangChain nodes not installed on this instance |
 | API will not boot | Read the log. Config validation names the exact variable |
 
 Reviews are never lost by any of these. They stay `pending`, the sweep

@@ -53,10 +53,43 @@ products, including human review.** That is disclosed in the site's privacy
 policy. If you move to a paid tier, nothing changes architecturally, but that
 paragraph should be updated because it will no longer be true.
 
-Structured output only: the response is constrained to a JSON schema whose
-`decision` field is an enum of exactly `approve|reject|escalate`. The model
-never emits a free-form action string that something downstream parses loosely,
-and anything unparseable or out of range is treated as `escalate`.
+### Where the output guarantee actually lives
+
+The Gemini node exposes a **boolean `jsonOutput`, not schema-constrained
+decoding.** There is no `jsonSchema` option, so nothing at the API boundary
+enforces that `decision` is one of three words. The JSON contract is stated in
+the system message, and the **`Parse decision` node is what enforces it**:
+anything unreadable, out of enum, missing a confidence, or carrying flagged
+categories alongside an `approve` is converted to `escalate`.
+
+That is a weaker guarantee than schema-constrained decoding, and it is worth
+being precise about rather than assuming. What it costs is small, though,
+because schema enforcement never protected against the case that actually
+matters. A schema still admits `{"decision": "approve"}` for a review that
+should have been rejected; all it rules out is *malformed* output, which
+`Parse decision` already handles.
+
+**The alternative, and why it was not taken.** A Basic LLM Chain with a
+Structured Output Parser subnode does enforce a schema — but it *throws* on a
+violation rather than passing the malformed output along. A throw routes to the
+error branch, which alerts Discord and leaves the review `pending` until the
+sweeper escalates it up to 30 hours later. The current path escalates
+immediately, with a reason attached, visible in the moderation queue straight
+away. Both are fail-safe; this one fails faster and says more. If you switch,
+keep the error branch wired, or a schema violation becomes a review nobody
+looks at.
+
+`Parse decision` is therefore load-bearing. Its behaviour under every failure
+shape — truncated output, fenced JSON, out-of-enum decisions, approvals with no
+confidence — is worth re-checking if you edit it.
+
+### maxOutputTokens
+
+Set to **512**. The node's default is **16**, which truncates the JSON
+mid-object on essentially every call. A truncated reply is unparseable, so the
+workflow would escalate 100% of reviews while looking like a cautious
+classifier rather than a broken one — the kind of failure that survives a demo
+and is discovered a month later from the queue depth.
 
 ## Rolling it out
 
