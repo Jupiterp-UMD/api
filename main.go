@@ -26,6 +26,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"log"
+	"net/http"
 	"strings"
 	"time"
 
@@ -106,7 +107,14 @@ func main() {
 		v1 := r.Group("/v1")
 		v1.Use(cors.New(cors.Config{
 			AllowOrigins:     cfg.AllowedOrigins,
-			AllowMethods:     []string{"GET", "POST", "PATCH", "DELETE", "OPTIONS"},
+			// PUT is here because `admin.PUT /reviews/:id` is the moderation
+			// decision route -- the one a moderator uses to approve or reject.
+			// It was the only verb the group serves that this list omitted, so
+			// the preflight answered 204 while advertising a method set without
+			// it, and the browser refused the request. Anything added to this
+			// group needs its verb here too; the route registering is not what
+			// makes it reachable from a browser.
+			AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 			AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
 			AllowCredentials: false,
 			MaxAge:           12 * time.Hour,

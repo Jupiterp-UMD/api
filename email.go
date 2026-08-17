@@ -89,7 +89,16 @@ func (e *EmailSender) Flush(limit int) (int, error) {
 	params := url.Values{}
 	params.Set("select", "*")
 	params.Set("status", "eq.queued")
-	params.Set("next_attempt_at", "lte."+time.Now().UTC().Format(time.RFC3339))
+	// RFC3339Nano, not RFC3339.
+	//
+	// RFC3339 truncates to whole seconds, so a row queued at 18:18:06.573 was
+	// compared against `lte 18:18:06` and excluded by its own flush. Submission
+	// queues the verification email and immediately flushes, so the row it just
+	// wrote was the one row it could not see: every submission sent the
+	// *previous* user's email and left its own behind, waiting for the hourly
+	// sweep. From the reviewer's side that is a confirmation link that simply
+	// never arrives.
+	params.Set("next_attempt_at", "lte."+time.Now().UTC().Format(time.RFC3339Nano))
 	params.Set("order", "next_attempt_at.asc")
 	params.Set("limit", fmt.Sprintf("%d", limit))
 
