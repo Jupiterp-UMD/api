@@ -55,11 +55,16 @@ func main() {
 
 	/* ============================== CORS ================================= */
 	//
-	// Per group, not global. /v0 is a read-only public API and stays open to
-	// every origin, which is what makes it usable from anywhere. /v1 accepts
-	// writes and gets an explicit origin allowlist -- a permissive policy on a
-	// write endpoint means any page on the internet can make a visitor's
-	// browser submit a review.
+	// Per group, not global, and per *kind of route* rather than per version.
+	// Reads are a public API and stay open to every origin, which is what makes
+	// them usable from anywhere. Writes get an explicit origin allowlist -- a
+	// permissive policy on a write endpoint means any page on the internet can
+	// make a visitor's browser submit a review.
+	//
+	// This distinction is why the read surface below is not simply added to the
+	// existing /v1 group: that group carries the write allowlist, and reads
+	// inheriting it would silently stop working from every origin except
+	// jupiterp.com -- including the published npm client.
 
 	permissiveCORS := cors.Default()
 
@@ -72,24 +77,50 @@ func main() {
 
 	r.GET("/", permissiveCORS, handleDocs) // API Docs
 
+	/* ============================ READ SURFACE =========================== */
+	//
+	// The catalog and grade endpoints, served under both /v1 and /v0.
+	//
+	// /v1 is where these live now. /v0 stays registered against the same
+	// handlers as a compatibility alias, because it is a documented public API:
+	// `@jupiterp/jupiterp` 1.0.0 is on npm calling /v0 paths, and anything else
+	// built against api.jupiterp.com/v0 would break the day it stopped
+	// answering. An alias costs one line per route and removes any deadline for
+	// consumers to migrate.
+	//
+	// Registered once and mounted twice so the two prefixes cannot drift. A new
+	// endpoint added here appears on both; adding it to one group by hand is
+	// how a version alias quietly becomes a version fork.
+	registerReadRoutes := func(g *gin.RouterGroup) {
+		g.GET("/", client.handleBaseEndpoint) // base endpoint
+
+		g.GET("/courses", client.handleGetCourses)                       // full courses
+		g.GET("/courses/minified", client.handleMinifiedCourses)         // minified courses
+		g.GET("/courses/withSections", client.handleCoursesWithSections) // courses with sections
+
+		g.GET("/deptList", client.handleGetDepartments) // list of all 4-letter department codes
+
+		g.GET("/sections", client.handleGetSections) // sections for courses
+
+		g.GET("/instructors", client.handleGetInstructors)              // all instructors with ratings
+		g.GET("/instructors/active", client.handleGetActiveInstructors) // all instructors currently teaching
+
+		g.GET("/grades", client.handleGetGrades)               // section-level grade distributions
+		g.GET("/grades/summary", client.handleGetGradeSummary) // grades aggregated by course, term, or instructor
+		g.GET("/grades/terms", client.handleGetGradeTerms)     // terms for which grade data exists
+	}
+
+	// Deliberately outside the `cfg.WriteEnabled()` block below. The write
+	// surface is conditional on a service key being present; the read surface
+	// is not, and nesting it there would make the entire catalog disappear on
+	// any deployment configured for reads only.
+	v1Read := r.Group("/v1")
+	v1Read.Use(permissiveCORS)
+	registerReadRoutes(v1Read)
+
 	v0 := r.Group("/v0")
 	v0.Use(permissiveCORS)
-	v0.GET("/", client.handleBaseEndpoint) // base v0 endpoint
-
-	v0.GET("/courses", client.handleGetCourses)                       // full courses
-	v0.GET("/courses/minified", client.handleMinifiedCourses)         // minified courses
-	v0.GET("/courses/withSections", client.handleCoursesWithSections) // courses with sections
-
-	v0.GET("/deptList", client.handleGetDepartments) // list of all 4-letter department codes
-
-	v0.GET("/sections", client.handleGetSections) // sections for courses
-
-	v0.GET("/instructors", client.handleGetInstructors)              // all instructors with ratings
-	v0.GET("/instructors/active", client.handleGetActiveInstructors) // all instructors currently teaching
-
-	v0.GET("/grades", client.handleGetGrades)               // section-level grade distributions
-	v0.GET("/grades/summary", client.handleGetGradeSummary) // grades aggregated by course, term, or instructor
-	v0.GET("/grades/terms", client.handleGetGradeTerms)     // terms for which grade data exists
+	registerReadRoutes(v0)
 
 	/* =============================== V1 ================================== */
 	//

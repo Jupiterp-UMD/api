@@ -21,9 +21,14 @@ type SupabaseClient struct {
 	courseCache *LRUCache
 }
 
-// The cache serving a given endpoint path.
+// The cache serving a given endpoint.
+//
+// `path` is the endpoint's name, not a URL -- it carries no version prefix,
+// because the same handlers answer under both /v1 and /v0 and both should draw
+// on the same cache. Their entries stay distinct regardless: the cache *key*
+// comes from `buildCacheKey`, which includes the real request path.
 func (s SupabaseClient) cacheFor(path string) *LRUCache {
-	if strings.HasPrefix(path, "v0/courses") || strings.HasPrefix(path, "v0/sections") {
+	if strings.HasPrefix(path, "courses") || strings.HasPrefix(path, "sections") {
 		return s.courseCache
 	}
 	return s.cache

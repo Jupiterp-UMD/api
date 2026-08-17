@@ -703,19 +703,19 @@ func (client SupabaseClient) handleBaseEndpoint(ctx *gin.Context) {
 // Get a list of courses WITHOUT any section info.
 // Example: /v0/courses/?limit=10&offset=50&prefix=CMSC
 func (client SupabaseClient) handleGetCourses(ctx *gin.Context) {
-	path := "v0/courses"
+	path := "courses"
 	client.getCoursesAndSendResponse(ctx, []string{"*"}, path, coursesTTL)
 }
 
 // Get a minified list of courses. Returns only the course code and title.
 // Same arguments as `handleGetCourses`.
 func (client SupabaseClient) handleMinifiedCourses(ctx *gin.Context) {
-	path := "v0/courses/minified"
+	path := "courses/minified"
 	client.getCoursesAndSendResponse(ctx, []string{"course_code", "name"}, path, coursesTTL)
 }
 
 func (client SupabaseClient) handleCoursesWithSections(ctx *gin.Context) {
-	path := "v0/courses/withSections"
+	path := "courses/withSections"
 
 	var args CoursesWithSectionsArgs
 	if err := ctx.ShouldBindQuery(&args); err != nil {
@@ -751,7 +751,7 @@ func (client SupabaseClient) handleCoursesWithSections(ctx *gin.Context) {
 
 // Get a list of sections for a given course.
 func (client SupabaseClient) handleGetSections(ctx *gin.Context) {
-	path := "v0/sections"
+	path := "sections"
 
 	var args SectionsArgs
 	if err := ctx.ShouldBindQuery(&args); err != nil {
@@ -777,19 +777,19 @@ func (client SupabaseClient) handleGetSections(ctx *gin.Context) {
 
 // Get a list of instructors with their ratings.
 func (client SupabaseClient) handleGetInstructors(ctx *gin.Context) {
-	path := "v0/instructors"
+	path := "instructors"
 	client.getInstructorsAndSendResponse(ctx, path, "instructors", instructorsTTL)
 }
 
 // Get a list of instructors currently teaching courses.
 func (client SupabaseClient) handleGetActiveInstructors(ctx *gin.Context) {
-	path := "v0/instructors/active"
+	path := "instructors/active"
 	client.getInstructorsAndSendResponse(ctx, path, "active_instructors", instructorsTTL)
 }
 
 // Get a list of all 4-letter department codes.
 func (client SupabaseClient) handleGetDepartments(ctx *gin.Context) {
-	path := "v0/deptList"
+	path := "deptList"
 
 	key := buildCacheKey(ctx.Request)
 	if client.serveFromCache(ctx, path, key) {
@@ -809,7 +809,7 @@ func (client SupabaseClient) handleGetDepartments(ctx *gin.Context) {
 // Get section-level grade distributions.
 // Example: /v0/grades?courseCodes=CMSC132&term=gte.202008&sortBy=term.desc
 func (client SupabaseClient) handleGetGrades(ctx *gin.Context) {
-	path := "v0/grades"
+	path := "grades"
 
 	var args GradesArgs
 	if err := ctx.ShouldBindQuery(&args); err != nil {
@@ -846,7 +846,7 @@ func (client SupabaseClient) handleGetGrades(ctx *gin.Context) {
 // Example: /v0/grades/summary?groupBy=instructor&courseCodes=CMSC330&minStudents=100
 // Example: /v0/grades/summary?groupBy=instructorOverall&instructorSlug=shane-walsh
 func (client SupabaseClient) handleGetGradeSummary(ctx *gin.Context) {
-	path := "v0/grades/summary"
+	path := "grades/summary"
 
 	var args GradeSummaryArgs
 	if err := ctx.ShouldBindQuery(&args); err != nil {
@@ -907,7 +907,7 @@ func (client SupabaseClient) handleGetGradeSummary(ctx *gin.Context) {
 
 // Get every term for which grade data is available.
 func (client SupabaseClient) handleGetGradeTerms(ctx *gin.Context) {
-	path := "v0/grades/terms"
+	path := "grades/terms"
 
 	key := buildCacheKey(ctx.Request)
 	if client.serveFromCache(ctx, path, key) {
