@@ -1,4 +1,4 @@
-# Jupiterp API v0 Docs (pre-release)
+# Jupiterp API Docs (pre-release)
 
 ## Introduction
 
@@ -8,29 +8,42 @@ For any questions or bugs, please contact [admin@jupiterp.com](mailto:admin@jupi
 
 Feel free to view or contribute to the project [on GitHub](https://www.github.com/jupiterp-umd/api).
 
+## Versions
+
+Everything is served under **`/v1`**. Use it for new work.
+
+**`/v0` still works and is not going away.** Every read endpoint documented here
+answers on both prefixes, from the same handlers, returning the same bytes —
+`/v0/courses` and `/v1/courses` are the same endpoint. Existing clients,
+including [`@jupiterp/jupiterp`](https://www.npmjs.com/package/@jupiterp/jupiterp)
+1.x, need no change and there is no migration deadline.
+
+The two prefixes are held together by a parity check that compares every read
+endpoint across both, so they cannot quietly drift apart.
+
 ## Endpoints
 
 | path | description | link |
 | :-- | :-- | :-- |
-| `/v0/` | Base endpoint | [jump](#-v0-) |
-| `/v0/courses` | Get a list of courses with full course info | [jump](#-v0-courses-) |
-| `/v0/courses/minified` | Get a list of courses with just the code and title for each | [jump](#-v0-courses-minified-) |
-| `/v0/courses/withSections` | Get a list of courses, including section data for each course | [jump](#-v0-courses-withsections-) |
-| `/v0/sections` | Get a list of sections for courses | [jump](#-v0-sections-) |
-| `/v0/instructors` | Get a list of instructors and their ratings | [jump](#-v0-instructors-) |
-| `/v0/instructors/active` | Get a list of instructors actively teaching a course | [jump](#-v0-instructors-active-) |
-| `/v0/deptList` | Get a list of 4-letter department codes | [jump](#-v0-deptlist-) |
-| `/v0/grades` | Get grade distributions for individual sections | [jump](#-v0-grades-) |
-| `/v0/grades/summary` | Get grade distributions aggregated by course, term, or instructor | [jump](#-v0-grades-summary-) |
-| `/v0/grades/terms` | Get the terms for which grade data is available | [jump](#-v0-grades-terms-) |
+| `/v1/` | Base endpoint | [jump](#-v1-) |
+| `/v1/courses` | Get a list of courses with full course info | [jump](#-v1-courses-) |
+| `/v1/courses/minified` | Get a list of courses with just the code and title for each | [jump](#-v1-courses-minified-) |
+| `/v1/courses/withSections` | Get a list of courses, including section data for each course | [jump](#-v1-courses-withsections-) |
+| `/v1/sections` | Get a list of sections for courses | [jump](#-v1-sections-) |
+| `/v1/instructors` | Get a list of instructors and their ratings | [jump](#-v1-instructors-) |
+| `/v1/instructors/active` | Get a list of instructors actively teaching a course | [jump](#-v1-instructors-active-) |
+| `/v1/deptList` | Get a list of 4-letter department codes | [jump](#-v1-deptlist-) |
+| `/v1/grades` | Get grade distributions for individual sections | [jump](#-v1-grades-) |
+| `/v1/grades/summary` | Get grade distributions aggregated by course, term, or instructor | [jump](#-v1-grades-summary-) |
+| `/v1/grades/terms` | Get the terms for which grade data is available | [jump](#-v1-grades-terms-) |
 
-### `/v0/` 
+### `/v1/` 
 
 [(back to endpoints)](#endpoints)
 
-This is the base endpoint for v0 of the Jupiterp API. It will simply return a HTTP StatusOK with some text to indicate that the Jupiterp API is online.
+This is the base endpoint for the Jupiterp API. It will simply return a HTTP StatusOK with some text to indicate that the Jupiterp API is online.
 
-### `/v0/courses` 
+### `/v1/courses` 
 
 [(back to endpoints)](#endpoints)
 
@@ -65,7 +78,7 @@ Gets a list of courses that match the given query parameters. This endpoint does
 
 ##### Getting multiple specific courses
 
-Request: `GET http://api.jupiterp.com/v0/courses?courseCodes=CMSC131,MATH141`
+Request: `GET http://api.jupiterp.com/v1/courses?courseCodes=CMSC131,MATH141`
 
 Response:
 ```
@@ -105,7 +118,7 @@ Response:
 
 ##### Getting courses that satisfy Gen-Ed requirements
 
-Request: `GET http://api.jupiterp.com/v0/courses?genEds=DVUP,DSSP&limit=2&sortBy=courseCode.asc`
+Request: `GET http://api.jupiterp.com/v1/courses?genEds=DVUP,DSSP&limit=2&sortBy=courseCode.asc`
 
 Response:
 ```
@@ -166,15 +179,15 @@ Response:
 ]
 ```
 
-### `/v0/courses/minified` 
+### `/v1/courses/minified` 
 
 [(back to endpoints)](#endpoints)
 
-Gets a minified list of courses that satisfy the given parameters. Takes the same parameters as the `/v0/courses` endpoint, but returns only the course code and title.
+Gets a minified list of courses that satisfy the given parameters. Takes the same parameters as the `/v1/courses` endpoint, but returns only the course code and title.
 
 #### Query parameters
 
-Same as the parameters for `/v0/courses`; see [here](#-v0-courses-).
+Same as the parameters for `/v1/courses`; see [here](#-v1-courses-).
 
 #### Output
 
@@ -187,7 +200,7 @@ Same as the parameters for `/v0/courses`; see [here](#-v0-courses-).
 
 ##### Getting courses with a specific prefix
 
-Request: `GET http://api.jupiterp.com/v0/courses/minified?prefix=ASTR4&sortBy=name.asc`
+Request: `GET http://api.jupiterp.com/v1/courses/minified?prefix=ASTR4&sortBy=name.asc`
 
 Response:
 ```
@@ -207,7 +220,7 @@ Response:
 ]
 ```
 
-### `/v0/courses/withSections` 
+### `/v1/courses/withSections` 
 
 [(back to endpoints)](#endpoints)
 
@@ -240,13 +253,13 @@ Gets a list of full courses data and associated sections data. Each returned cou
 | `gen_eds` | string[] or null | A list of four-letter codes for the Gen-Ed requirements this course satisfies (ex. DSSP, DVUP). |
 | `conditions` | string[] or null | A list of additionall conditions listed for this course. This consists of things like prerequisites, corequisites, or additional information. |
 | `description` | string or null | A detailed description of the course. Some courses do not have a description, especially independent research courses. |
-| `sections` | Section[] | A list of `Section`s. A `Section` consists of the fields described in the output of `/v0/sections` (see [here](#-v0-sections-)) |
+| `sections` | Section[] | A list of `Section`s. A `Section` consists of the fields described in the output of `/v1/sections` (see [here](#-v1-sections-)) |
 
 #### Examples
 
 ##### Getting a course with sections data
 
-Request: `GET http://api.jupiterp.com/v0/courses/withSections?courseCodes=CMSC433`
+Request: `GET http://api.jupiterp.com/v1/courses/withSections?courseCodes=CMSC433`
 
 Response:
 ```
@@ -299,7 +312,7 @@ Response:
 ]
 ```
 
-### `/v0/sections` 
+### `/v1/sections` 
 
 [(back to endpoints)](#endpoints)
 
@@ -335,7 +348,7 @@ Get sections for specific courses, or for all courses that match a course code p
 
 ##### Getting all sections for a course
 
-Request: `GET http://api.jupiterp.com/v0/sections?courseCodes=CMSC433`
+Request: `GET http://api.jupiterp.com/v1/sections?courseCodes=CMSC433`
 
 Response:
 ```
@@ -371,7 +384,7 @@ Response:
 ]
 ```
 
-### `/v0/instructors` 
+### `/v1/instructors` 
 
 [(back to endpoints)](#endpoints)
 
@@ -403,7 +416,7 @@ Get a list of all instructors and their average ratings, including instructors n
 
 ##### Getting high-rated, non-5 star instructors
 
-Request: `GET http://api.jupiterp.com/v0/instructors?ratings=gt.4.5&ratings=lt.5&limit=5&sortBy=average_rating.desc,name.desc`
+Request: `GET http://api.jupiterp.com/v1/instructors?ratings=gt.4.5&ratings=lt.5&limit=5&sortBy=average_rating.desc,name.desc`
 
 Response:
 ```
@@ -436,7 +449,7 @@ Response:
 ]
 ```
 
-### `/v0/instructors/active`
+### `/v1/instructors/active`
 
 [(back to endpoints)](#endpoints)
 
@@ -444,17 +457,17 @@ Get all instructors that are currently teaching a course, as listed on Testudo.
 
 #### Query Parameters
 
-Same as `/v0/instructors`; see [here](#-v0-instructors-).
+Same as `/v1/instructors`; see [here](#-v1-instructors-).
 
 #### Output
 
-Same as `/v0/instructors`; see [here](#-v0-instructors-).
+Same as `/v1/instructors`; see [here](#-v1-instructors-).
 
 #### Examples
 
 ##### Getting instructors currently teaching a course
 
-Request: `GET http://api.jupiterp.com/v0/instructors/active?limit=5`
+Request: `GET http://api.jupiterp.com/v1/instructors/active?limit=5`
 
 Response:
 ```
@@ -487,7 +500,7 @@ Response:
 ]
 ```
 
-### `/v0/deptList`
+### `/v1/deptList`
 
 [(back to endpoints)](#endpoints)
 
@@ -503,7 +516,7 @@ None
 | :-- | :--: | :-- |
 | `dept_code` | string | A unique 4-letter department code |
 | `name` | string | The name of the department |
-### `/v0/grades` 
+### `/v1/grades` 
 
 [(back to endpoints)](#endpoints)
 
@@ -532,10 +545,10 @@ For counts aggregated across sections, terms, or instructors, use the `summary` 
 | field | type | description |
 | :-- | :--: | :-- |
 | `term` | int | Six-digit term code: the four-digit year followed by the month the term begins (`01` spring, `08` fall). Fall 2024 is `202408`. |
-| `course_code` | string | The course code, matching `course_code` elsewhere in this API. A course that has since been retired will have grade records but no entry in `/v0/courses`. |
-| `sec_code` | string | The section code, matching `sec_code` on `/v0/sections`. |
+| `course_code` | string | The course code, matching `course_code` elsewhere in this API. A course that has since been retired will have grade records but no entry in `/v1/courses`. |
+| `sec_code` | string | The section code, matching `sec_code` on `/v1/sections`. |
 | `instructor` | string or null | The instructor exactly as the Registrar printed them, in "Last, First Middle" order. Null where the release left the field blank. |
-| `instructor_name` | string or null | The effective instructor in "First Last" order, suitable for matching against `/v0/instructors`. May be populated where `instructor` is null; see `instructor_source`. |
+| `instructor_name` | string or null | The effective instructor in "First Last" order, suitable for matching against `/v1/instructors`. May be populated where `instructor` is null; see `instructor_source`. |
 | `instructor_source` | string or null | How `instructor_name` was determined. `reported` means the Registrar named them on this row. `lead` means the name was carried from the lead section of the same lecture, which is how the release records discussion and lab sections. `course` means it was carried from a different lecture group or a differently-coded offering, and is materially less reliable. Null where no section of the course was named. |
 | `total` | int | Students enrolled, as reported. From Fall 2017 this equals the sum of the fifteen grade buckets; in earlier terms it can exceed that sum by a few students whose outcome the older report did not categorize. Prefer `graded` as a denominator when comparing across that boundary. |
 | `a_plus`, `a`, `a_minus` … `d_minus`, `f` | int | Students receiving each letter grade. |
@@ -548,7 +561,7 @@ For counts aggregated across sections, terms, or instructors, use the `summary` 
 
 ##### Getting every section of a course in one term
 
-Request: `GET http://api.jupiterp.com/v0/grades?courseCodes=CMSC132&term=eq.202408&limit=2`
+Request: `GET http://api.jupiterp.com/v1/grades?courseCodes=CMSC132&term=eq.202408&limit=2`
 
 Response:
 ```
@@ -586,7 +599,7 @@ Response:
 
 Note the second record: the release lists the instructor once against the lecture and leaves the discussion sections blank, so `instructor` is null while `instructor_name` carries the lecturer's name and `instructor_source` records that it was inferred.
 
-### `/v0/grades/summary` 
+### `/v1/grades/summary` 
 
 [(back to endpoints)](#endpoints)
 
@@ -616,7 +629,7 @@ Note that `instructorOverall` and `instructorTerm` aggregate across every course
 
 #### Output
 
-All groupings return the summed grade buckets (`a_plus` through `other`), `total`, `graded`, and `gpa`, defined exactly as on `/v0/grades`. In addition:
+All groupings return the summed grade buckets (`a_plus` through `other`), `total`, `graded`, and `gpa`, defined exactly as on `/v1/grades`. In addition:
 
 | field | type | description |
 | :-- | :--: | :-- |
@@ -634,7 +647,7 @@ All groupings return the summed grade buckets (`a_plus` through `other`), `total
 
 ##### How hard is a course, over its whole history
 
-Request: `GET http://api.jupiterp.com/v0/grades/summary?courseCodes=CMSC351`
+Request: `GET http://api.jupiterp.com/v1/grades/summary?courseCodes=CMSC351`
 
 Response:
 ```
@@ -669,7 +682,7 @@ Response:
 
 ##### Comparing instructors for a course
 
-Request: `GET http://api.jupiterp.com/v0/grades/summary?groupBy=instructor&courseCodes=CMSC330&minStudents=1000&sortBy=gpa.desc`
+Request: `GET http://api.jupiterp.com/v1/grades/summary?groupBy=instructor&courseCodes=CMSC330&minStudents=1000&sortBy=gpa.desc`
 
 Response:
 ```
@@ -699,7 +712,7 @@ Response:
 ]
 ```
 
-### `/v0/grades/terms` 
+### `/v1/grades/terms` 
 
 [(back to endpoints)](#endpoints)
 
@@ -718,7 +731,7 @@ Gets every term for which grade data has been loaded, newest first. Takes no par
 
 #### Example
 
-Request: `GET http://api.jupiterp.com/v0/grades/terms`
+Request: `GET http://api.jupiterp.com/v1/grades/terms`
 
 Response:
 ```
@@ -745,10 +758,15 @@ Response:
 
 # Jupiterp API v1 (reviews)
 
-`/v1` is the write surface. It exists separately from `/v0` because writes need
-things reads do not: an origin allowlist, authentication, rate limiting, and a
-captcha. `/v0` stays exactly as it is — permissive, unauthenticated, and
-cacheable.
+The endpoints below write, and they are governed differently from the read
+endpoints above even though both are served under `/v1`. Writes need things
+reads do not: an origin allowlist, authentication, rate limiting, and a captcha.
+The read endpoints stay permissive, unauthenticated, and cacheable.
+
+That difference is worth stating plainly, because it is the one thing the shared
+prefix hides. **Reads accept requests from any origin. Writes accept them only
+from an allowlist** (`V1_ALLOWED_ORIGINS`). A browser on an unrelated domain can
+call `GET /v1/courses` and will be refused by `POST /v1/reviews`.
 
 Reviews are **pre-moderated**. Nothing submitted here is publicly visible until
 a moderator approves it, and that is true whether the decision is made by a

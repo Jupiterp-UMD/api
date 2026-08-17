@@ -8,11 +8,20 @@
         <link rel="stylesheet" type="text/css" href="docs.css">
     </head>
     <body>
-        <h1 id="jupiterp-api-v0-docs-pre-release-">Jupiterp API v0 Docs (pre-release)</h1>
+        <h1 id="jupiterp-api-docs-pre-release-">Jupiterp API Docs (pre-release)</h1>
         <h2 id="introduction">Introduction</h2>
         <p>Welcome to the Jupiterp API, a free and open-source API to get detailed course data for the University of Maryland. Currently, the API is in pre-release phase and is unstable; expect breaking changes, but the information in these docs should be correct and up-to-date.</p>
         <p>For any questions or bugs, please contact <a href="mailto:admin@jupiterp.com">admin@jupiterp.com</a>.</p>
         <p>Feel free to view or contribute to the project <a href="https://www.github.com/jupiterp-umd/api">on GitHub</a>.</p>
+        <h2 id="versions">Versions</h2>
+        <p>Everything is served under <strong><code>/v1</code></strong>. Use it for new work.</p>
+        <p><strong><code>/v0</code> still works and is not going away.</strong> Every read endpoint documented here
+        answers on both prefixes, from the same handlers, returning the same bytes —
+        <code>/v0/courses</code> and <code>/v1/courses</code> are the same endpoint. Existing clients,
+        including <a href="https://www.npmjs.com/package/@jupiterp/jupiterp"><code>@jupiterp/jupiterp</code></a>
+        1.x, need no change and there is no migration deadline.</p>
+        <p>The two prefixes are held together by a parity check that compares every read
+        endpoint across both, so they cannot quietly drift apart.</p>
         <h2 id="endpoints">Endpoints</h2>
         <table>
         <thead>
@@ -24,66 +33,66 @@
         </thead>
         <tbody>
         <tr>
-        <td style="text-align:left"><code>/v0/</code></td>
+        <td style="text-align:left"><code>/v1/</code></td>
         <td style="text-align:left">Base endpoint</td>
-        <td style="text-align:left"><a href="#-v0-">jump</a></td>
+        <td style="text-align:left"><a href="#-v1-">jump</a></td>
         </tr>
         <tr>
-        <td style="text-align:left"><code>/v0/courses</code></td>
+        <td style="text-align:left"><code>/v1/courses</code></td>
         <td style="text-align:left">Get a list of courses with full course info</td>
-        <td style="text-align:left"><a href="#-v0-courses-">jump</a></td>
+        <td style="text-align:left"><a href="#-v1-courses-">jump</a></td>
         </tr>
         <tr>
-        <td style="text-align:left"><code>/v0/courses/minified</code></td>
+        <td style="text-align:left"><code>/v1/courses/minified</code></td>
         <td style="text-align:left">Get a list of courses with just the code and title for each</td>
-        <td style="text-align:left"><a href="#-v0-courses-minified-">jump</a></td>
+        <td style="text-align:left"><a href="#-v1-courses-minified-">jump</a></td>
         </tr>
         <tr>
-        <td style="text-align:left"><code>/v0/courses/withSections</code></td>
+        <td style="text-align:left"><code>/v1/courses/withSections</code></td>
         <td style="text-align:left">Get a list of courses, including section data for each course</td>
-        <td style="text-align:left"><a href="#-v0-courses-withsections-">jump</a></td>
+        <td style="text-align:left"><a href="#-v1-courses-withsections-">jump</a></td>
         </tr>
         <tr>
-        <td style="text-align:left"><code>/v0/sections</code></td>
+        <td style="text-align:left"><code>/v1/sections</code></td>
         <td style="text-align:left">Get a list of sections for courses</td>
-        <td style="text-align:left"><a href="#-v0-sections-">jump</a></td>
+        <td style="text-align:left"><a href="#-v1-sections-">jump</a></td>
         </tr>
         <tr>
-        <td style="text-align:left"><code>/v0/instructors</code></td>
+        <td style="text-align:left"><code>/v1/instructors</code></td>
         <td style="text-align:left">Get a list of instructors and their ratings</td>
-        <td style="text-align:left"><a href="#-v0-instructors-">jump</a></td>
+        <td style="text-align:left"><a href="#-v1-instructors-">jump</a></td>
         </tr>
         <tr>
-        <td style="text-align:left"><code>/v0/instructors/active</code></td>
+        <td style="text-align:left"><code>/v1/instructors/active</code></td>
         <td style="text-align:left">Get a list of instructors actively teaching a course</td>
-        <td style="text-align:left"><a href="#-v0-instructors-active-">jump</a></td>
+        <td style="text-align:left"><a href="#-v1-instructors-active-">jump</a></td>
         </tr>
         <tr>
-        <td style="text-align:left"><code>/v0/deptList</code></td>
+        <td style="text-align:left"><code>/v1/deptList</code></td>
         <td style="text-align:left">Get a list of 4-letter department codes</td>
-        <td style="text-align:left"><a href="#-v0-deptlist-">jump</a></td>
+        <td style="text-align:left"><a href="#-v1-deptlist-">jump</a></td>
         </tr>
         <tr>
-        <td style="text-align:left"><code>/v0/grades</code></td>
+        <td style="text-align:left"><code>/v1/grades</code></td>
         <td style="text-align:left">Get grade distributions for individual sections</td>
-        <td style="text-align:left"><a href="#-v0-grades-">jump</a></td>
+        <td style="text-align:left"><a href="#-v1-grades-">jump</a></td>
         </tr>
         <tr>
-        <td style="text-align:left"><code>/v0/grades/summary</code></td>
+        <td style="text-align:left"><code>/v1/grades/summary</code></td>
         <td style="text-align:left">Get grade distributions aggregated by course, term, or instructor</td>
-        <td style="text-align:left"><a href="#-v0-grades-summary-">jump</a></td>
+        <td style="text-align:left"><a href="#-v1-grades-summary-">jump</a></td>
         </tr>
         <tr>
-        <td style="text-align:left"><code>/v0/grades/terms</code></td>
+        <td style="text-align:left"><code>/v1/grades/terms</code></td>
         <td style="text-align:left">Get the terms for which grade data is available</td>
-        <td style="text-align:left"><a href="#-v0-grades-terms-">jump</a></td>
+        <td style="text-align:left"><a href="#-v1-grades-terms-">jump</a></td>
         </tr>
         </tbody>
         </table>
-        <h3 id="-v0-"><code>/v0/</code></h3>
+        <h3 id="-v1-"><code>/v1/</code></h3>
         <p><a href="#endpoints">(back to endpoints)</a></p>
-        <p>This is the base endpoint for v0 of the Jupiterp API. It will simply return a HTTP StatusOK with some text to indicate that the Jupiterp API is online.</p>
-        <h3 id="-v0-courses-"><code>/v0/courses</code></h3>
+        <p>This is the base endpoint for the Jupiterp API. It will simply return a HTTP StatusOK with some text to indicate that the Jupiterp API is online.</p>
+        <h3 id="-v1-courses-"><code>/v1/courses</code></h3>
         <p><a href="#endpoints">(back to endpoints)</a></p>
         <p>Gets a list of courses that match the given query parameters. This endpoint does not return section information; for section info, use the <code>sections</code> endpoint listed below.</p>
         <h4 id="query-parameters">Query parameters</h4>
@@ -187,7 +196,7 @@
         </table>
         <h4 id="examples">Examples</h4>
         <h5 id="getting-multiple-specific-courses">Getting multiple specific courses</h5>
-        <p>Request: <code>GET http://api.jupiterp.com/v0/courses?courseCodes=CMSC131,MATH141</code></p>
+        <p>Request: <code>GET http://api.jupiterp.com/v1/courses?courseCodes=CMSC131,MATH141</code></p>
         <p>Response:</p>
 <pre><code>[
   {
@@ -223,7 +232,7 @@
 ]
 </code></pre>
         <h5 id="getting-courses-that-satisfy-gen-ed-requirements">Getting courses that satisfy Gen-Ed requirements</h5>
-        <p>Request: <code>GET http://api.jupiterp.com/v0/courses?genEds=DVUP,DSSP&amp;limit=2&amp;sortBy=courseCode.asc</code></p>
+        <p>Request: <code>GET http://api.jupiterp.com/v1/courses?genEds=DVUP,DSSP&amp;limit=2&amp;sortBy=courseCode.asc</code></p>
         <p>Response:</p>
 <pre><code>[
   {
@@ -281,11 +290,11 @@
   }
 ]
 </code></pre>
-        <h3 id="-v0-courses-minified-"><code>/v0/courses/minified</code></h3>
+        <h3 id="-v1-courses-minified-"><code>/v1/courses/minified</code></h3>
         <p><a href="#endpoints">(back to endpoints)</a></p>
-        <p>Gets a minified list of courses that satisfy the given parameters. Takes the same parameters as the <code>/v0/courses</code> endpoint, but returns only the course code and title.</p>
+        <p>Gets a minified list of courses that satisfy the given parameters. Takes the same parameters as the <code>/v1/courses</code> endpoint, but returns only the course code and title.</p>
         <h4 id="query-parameters-1">Query parameters</h4>
-        <p>Same as the parameters for <code>/v0/courses</code>; see <a href="#-v0-courses-">here</a>.</p>
+        <p>Same as the parameters for <code>/v1/courses</code>; see <a href="#-v1-courses-">here</a>.</p>
         <h4 id="output-1">Output</h4>
         <table>
         <thead>
@@ -310,7 +319,7 @@
         </table>
         <h4 id="examples-1">Examples</h4>
         <h5 id="getting-courses-with-a-specific-prefix">Getting courses with a specific prefix</h5>
-        <p>Request: <code>GET http://api.jupiterp.com/v0/courses/minified?prefix=ASTR4&amp;sortBy=name.asc</code></p>
+        <p>Request: <code>GET http://api.jupiterp.com/v1/courses/minified?prefix=ASTR4&amp;sortBy=name.asc</code></p>
         <p>Response:</p>
 <pre><code>[
   {
@@ -327,7 +336,7 @@
   }
 ]
 </code></pre>
-        <h3 id="-v0-courses-withsections-"><code>/v0/courses/withSections</code></h3>
+        <h3 id="-v1-courses-withsections-"><code>/v1/courses/withSections</code></h3>
         <p><a href="#endpoints">(back to endpoints)</a></p>
         <p>Gets a list of full courses data and associated sections data. Each returned course also contains a (potentially-empty) list of sections for that course.</p>
         <h4 id="query-parameters-2">Query parameters</h4>
@@ -445,13 +454,13 @@
         <tr>
         <td style="text-align:left"><code>sections</code></td>
         <td style="text-align:center">Section[]</td>
-        <td style="text-align:left">A list of <code>Section</code>s. A <code>Section</code> consists of the fields described in the output of <code>/v0/sections</code> (see <a href="#-v0-sections-">here</a>)</td>
+        <td style="text-align:left">A list of <code>Section</code>s. A <code>Section</code> consists of the fields described in the output of <code>/v1/sections</code> (see <a href="#-v1-sections-">here</a>)</td>
         </tr>
         </tbody>
         </table>
         <h4 id="examples-2">Examples</h4>
         <h5 id="getting-a-course-with-sections-data">Getting a course with sections data</h5>
-        <p>Request: <code>GET http://api.jupiterp.com/v0/courses/withSections?courseCodes=CMSC433</code></p>
+        <p>Request: <code>GET http://api.jupiterp.com/v1/courses/withSections?courseCodes=CMSC433</code></p>
         <p>Response:</p>
 <pre><code>[
   {
@@ -501,7 +510,7 @@
   }
 ]
 </code></pre>
-        <h3 id="-v0-sections-"><code>/v0/sections</code></h3>
+        <h3 id="-v1-sections-"><code>/v1/sections</code></h3>
         <p><a href="#endpoints">(back to endpoints)</a></p>
         <p>Get sections for specific courses, or for all courses that match a course code prefix. Note that some courses don't have any sections; for example, most independent research courses, like ASTR498, will not return any sections.</p>
         <h4 id="query-parameters-3">Query parameters</h4>
@@ -610,7 +619,7 @@
         </table>
         <h4 id="examples-3">Examples</h4>
         <h5 id="getting-all-sections-for-a-course">Getting all sections for a course</h5>
-        <p>Request: <code>GET http://api.jupiterp.com/v0/sections?courseCodes=CMSC433</code></p>
+        <p>Request: <code>GET http://api.jupiterp.com/v1/sections?courseCodes=CMSC433</code></p>
         <p>Response:</p>
 <pre><code>[
   {
@@ -643,7 +652,7 @@
   }
 ]
 </code></pre>
-        <h3 id="-v0-instructors-"><code>/v0/instructors</code></h3>
+        <h3 id="-v1-instructors-"><code>/v1/instructors</code></h3>
         <p><a href="#endpoints">(back to endpoints)</a></p>
         <p>Get a list of all instructors and their average ratings, including instructors not actively teaching any courses.</p>
         <h4 id="query-parameters-4">Query parameters</h4>
@@ -732,7 +741,7 @@
         </table>
         <h4 id="examples-4">Examples</h4>
         <h5 id="getting-high-rated-non-5-star-instructors">Getting high-rated, non-5 star instructors</h5>
-        <p>Request: <code>GET http://api.jupiterp.com/v0/instructors?ratings=gt.4.5&amp;ratings=lt.5&amp;limit=5&amp;sortBy=average_rating.desc,name.desc</code></p>
+        <p>Request: <code>GET http://api.jupiterp.com/v1/instructors?ratings=gt.4.5&amp;ratings=lt.5&amp;limit=5&amp;sortBy=average_rating.desc,name.desc</code></p>
         <p>Response:</p>
 <pre><code>[
   {
@@ -762,16 +771,16 @@
   }
 ]
 </code></pre>
-        <h3 id="-v0-instructors-active-"><code>/v0/instructors/active</code></h3>
+        <h3 id="-v1-instructors-active-"><code>/v1/instructors/active</code></h3>
         <p><a href="#endpoints">(back to endpoints)</a></p>
         <p>Get all instructors that are currently teaching a course, as listed on Testudo.</p>
         <h4 id="query-parameters-5">Query Parameters</h4>
-        <p>Same as <code>/v0/instructors</code>; see <a href="#-v0-instructors-">here</a>.</p>
+        <p>Same as <code>/v1/instructors</code>; see <a href="#-v1-instructors-">here</a>.</p>
         <h4 id="output-5">Output</h4>
-        <p>Same as <code>/v0/instructors</code>; see <a href="#-v0-instructors-">here</a>.</p>
+        <p>Same as <code>/v1/instructors</code>; see <a href="#-v1-instructors-">here</a>.</p>
         <h4 id="examples-5">Examples</h4>
         <h5 id="getting-instructors-currently-teaching-a-course">Getting instructors currently teaching a course</h5>
-        <p>Request: <code>GET http://api.jupiterp.com/v0/instructors/active?limit=5</code></p>
+        <p>Request: <code>GET http://api.jupiterp.com/v1/instructors/active?limit=5</code></p>
         <p>Response:</p>
 <pre><code>[
   {
@@ -801,7 +810,7 @@
   }
 ]
 </code></pre>
-        <h3 id="-v0-deptlist-"><code>/v0/deptList</code></h3>
+        <h3 id="-v1-deptlist-"><code>/v1/deptList</code></h3>
         <p><a href="#endpoints">(back to endpoints)</a></p>
         <p>Get a list of 4-letter department codes.</p>
         <h4 id="query-parameters-6">Query parameters</h4>
@@ -828,7 +837,7 @@
         </tr>
         </tbody>
         </table>
-        <h3 id="-v0-grades-"><code>/v0/grades</code></h3>
+        <h3 id="-v1-grades-"><code>/v1/grades</code></h3>
         <p><a href="#endpoints">(back to endpoints)</a></p>
         <p>Gets grade distributions for individual course sections, as released by the University Registrar under the Maryland Public Information Act. Data covers fall and spring terms from Fall 2010 through Spring 2026; winter and summer terms were not released.</p>
         <p>For counts aggregated across sections, terms, or instructors, use the <code>summary</code> endpoint below.</p>
@@ -917,12 +926,12 @@
         <tr>
         <td style="text-align:left"><code>course_code</code></td>
         <td style="text-align:center">string</td>
-        <td style="text-align:left">The course code, matching <code>course_code</code> elsewhere in this API. A course that has since been retired will have grade records but no entry in <code>/v0/courses</code>.</td>
+        <td style="text-align:left">The course code, matching <code>course_code</code> elsewhere in this API. A course that has since been retired will have grade records but no entry in <code>/v1/courses</code>.</td>
         </tr>
         <tr>
         <td style="text-align:left"><code>sec_code</code></td>
         <td style="text-align:center">string</td>
-        <td style="text-align:left">The section code, matching <code>sec_code</code> on <code>/v0/sections</code>.</td>
+        <td style="text-align:left">The section code, matching <code>sec_code</code> on <code>/v1/sections</code>.</td>
         </tr>
         <tr>
         <td style="text-align:left"><code>instructor</code></td>
@@ -932,7 +941,7 @@
         <tr>
         <td style="text-align:left"><code>instructor_name</code></td>
         <td style="text-align:center">string or null</td>
-        <td style="text-align:left">The effective instructor in &quot;First Last&quot; order, suitable for matching against <code>/v0/instructors</code>. May be populated where <code>instructor</code> is null; see <code>instructor_source</code>.</td>
+        <td style="text-align:left">The effective instructor in &quot;First Last&quot; order, suitable for matching against <code>/v1/instructors</code>. May be populated where <code>instructor</code> is null; see <code>instructor_source</code>.</td>
         </tr>
         <tr>
         <td style="text-align:left"><code>instructor_source</code></td>
@@ -973,7 +982,7 @@
         </table>
         <h4 id="examples-6">Examples</h4>
         <h5 id="getting-every-section-of-a-course-in-one-term">Getting every section of a course in one term</h5>
-        <p>Request: <code>GET http://api.jupiterp.com/v0/grades?courseCodes=CMSC132&amp;term=eq.202408&amp;limit=2</code></p>
+        <p>Request: <code>GET http://api.jupiterp.com/v1/grades?courseCodes=CMSC132&amp;term=eq.202408&amp;limit=2</code></p>
         <p>Response:</p>
 <pre><code>[
   {
@@ -1007,7 +1016,7 @@
 ]
 </code></pre>
         <p>Note the second record: the release lists the instructor once against the lecture and leaves the discussion sections blank, so <code>instructor</code> is null while <code>instructor_name</code> carries the lecturer's name and <code>instructor_source</code> records that it was inferred.</p>
-        <h3 id="-v0-grades-summary-"><code>/v0/grades/summary</code></h3>
+        <h3 id="-v1-grades-summary-"><code>/v1/grades/summary</code></h3>
         <p><a href="#endpoints">(back to endpoints)</a></p>
         <p>Gets grade distributions with the individual sections summed together. This is usually the endpoint you want: <code>groupBy=course</code> answers &quot;how hard is this course&quot;, <code>groupBy=term</code> answers &quot;has it changed&quot;, <code>groupBy=instructor</code> answers &quot;who should I take it with&quot;, and <code>groupBy=instructorOverall</code> answers &quot;how does this professor grade in general&quot;.</p>
         <p>Note that <code>instructorOverall</code> and <code>instructorTerm</code> aggregate across every course, so they take no course filter; passing <code>courseCodes</code>, <code>prefix</code>, or <code>number</code> with them returns 400 rather than silently ignoring the filter.</p>
@@ -1099,7 +1108,7 @@
         </tbody>
         </table>
         <h4 id="output-8">Output</h4>
-        <p>All groupings return the summed grade buckets (<code>a_plus</code> through <code>other</code>), <code>total</code>, <code>graded</code>, and <code>gpa</code>, defined exactly as on <code>/v0/grades</code>. In addition:</p>
+        <p>All groupings return the summed grade buckets (<code>a_plus</code> through <code>other</code>), <code>total</code>, <code>graded</code>, and <code>gpa</code>, defined exactly as on <code>/v1/grades</code>. In addition:</p>
         <table>
         <thead>
         <tr>
@@ -1158,7 +1167,7 @@
         </table>
         <h4 id="examples-7">Examples</h4>
         <h5 id="how-hard-is-a-course-over-its-whole-history">How hard is a course, over its whole history</h5>
-        <p>Request: <code>GET http://api.jupiterp.com/v0/grades/summary?courseCodes=CMSC351</code></p>
+        <p>Request: <code>GET http://api.jupiterp.com/v1/grades/summary?courseCodes=CMSC351</code></p>
         <p>Response:</p>
 <pre><code>[
   {
@@ -1189,7 +1198,7 @@
 ]
 </code></pre>
         <h5 id="comparing-instructors-for-a-course">Comparing instructors for a course</h5>
-        <p>Request: <code>GET http://api.jupiterp.com/v0/grades/summary?groupBy=instructor&amp;courseCodes=CMSC330&amp;minStudents=1000&amp;sortBy=gpa.desc</code></p>
+        <p>Request: <code>GET http://api.jupiterp.com/v1/grades/summary?groupBy=instructor&amp;courseCodes=CMSC330&amp;minStudents=1000&amp;sortBy=gpa.desc</code></p>
         <p>Response:</p>
 <pre><code>[
   {
@@ -1216,7 +1225,7 @@
   }
 ]
 </code></pre>
-        <h3 id="-v0-grades-terms-"><code>/v0/grades/terms</code></h3>
+        <h3 id="-v1-grades-terms-"><code>/v1/grades/terms</code></h3>
         <p><a href="#endpoints">(back to endpoints)</a></p>
         <p>Gets every term for which grade data has been loaded, newest first. Takes no parameters. Useful for discovering coverage before querying, since the released data covers fall and spring only.</p>
         <h4 id="output-9">Output</h4>
@@ -1262,7 +1271,7 @@
         </tbody>
         </table>
         <h4 id="example">Example</h4>
-        <p>Request: <code>GET http://api.jupiterp.com/v0/grades/terms</code></p>
+        <p>Request: <code>GET http://api.jupiterp.com/v1/grades/terms</code></p>
         <p>Response:</p>
 <pre><code>[
   {
@@ -1285,10 +1294,14 @@
 </code></pre>
         <hr>
         <h1 id="jupiterp-api-v1-reviews-">Jupiterp API v1 (reviews)</h1>
-        <p><code>/v1</code> is the write surface. It exists separately from <code>/v0</code> because writes need
-        things reads do not: an origin allowlist, authentication, rate limiting, and a
-        captcha. <code>/v0</code> stays exactly as it is — permissive, unauthenticated, and
-        cacheable.</p>
+        <p>The endpoints below write, and they are governed differently from the read
+        endpoints above even though both are served under <code>/v1</code>. Writes need things
+        reads do not: an origin allowlist, authentication, rate limiting, and a captcha.
+        The read endpoints stay permissive, unauthenticated, and cacheable.</p>
+        <p>That difference is worth stating plainly, because it is the one thing the shared
+        prefix hides. <strong>Reads accept requests from any origin. Writes accept them only
+        from an allowlist</strong> (<code>V1_ALLOWED_ORIGINS</code>). A browser on an unrelated domain can
+        call <code>GET /v1/courses</code> and will be refused by <code>POST /v1/reviews</code>.</p>
         <p>Reviews are <strong>pre-moderated</strong>. Nothing submitted here is publicly visible until
         a moderator approves it, and that is true whether the decision is made by a
         person or by the automated triage.</p>

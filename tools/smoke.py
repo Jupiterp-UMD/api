@@ -316,6 +316,81 @@ def check_timeout_headroom(base: str, budget: float = 1.5):
               "Consider materializing it")
 
 
+def check_alias_parity(base: str):
+    """The read surface must answer identically under /v1 and /v0.
+
+    /v0 is a documented public API -- `@jupiterp/jupiterp` 1.0.0 calls it, and
+    so may anything built against api.jupiterp.com/v0 -- so it stays registered
+    against the same handlers rather than being retired. That only holds while
+    both prefixes really are the same handlers.
+
+    The way an alias breaks is not a 404, which anyone would notice. It is a new
+    endpoint added to one group and not the other, so /v0 keeps working while
+    quietly missing whatever shipped last. Comparing responses catches both that
+    and any divergence in what they return.
+
+    Reads are also checked for permissive CORS here. The write group carries an
+    origin allowlist, and reads registered into it by mistake would still pass
+    every other check in this file while failing for every third-party caller.
+    """
+    print(f"\nalias parity ({READ} vs {ALIAS})")
+
+    endpoints = [
+        ("/", None),
+        ("/courses", {"limit": "5"}),
+        ("/courses/minified", {"limit": "5"}),
+        ("/courses/withSections", {"courseCodes": "CMSC132"}),
+        ("/deptList", None),
+        ("/sections", {"courseCodes": "CMSC132"}),
+        ("/instructors", {"limit": "5"}),
+        ("/instructors/active", {"limit": "5"}),
+        ("/grades", {"courseCodes": "CMSC132", "limit": "5"}),
+        ("/grades/summary", {"courseCodes": "CMSC132"}),
+        ("/grades/terms", None),
+    ]
+
+    for suffix, params in endpoints:
+        current_status, current = get(base, READ + suffix, params)
+        alias_status, alias = get(base, ALIAS + suffix, params)
+
+        if current_status != 200:
+            check(f"{READ}{suffix}", False, f"HTTP {current_status}")
+            continue
+        if alias_status == 404:
+            check(f"{ALIAS}{suffix} still answers", False,
+                  f"404 -- the alias is missing this endpoint, so anything still on "
+                  f"{ALIAS} (including @jupiterp/jupiterp 1.0.0) breaks here")
+            continue
+        if alias_status != 200:
+            check(f"{ALIAS}{suffix}", False, f"HTTP {alias_status}")
+            continue
+
+        check(f"{suffix} identical on both prefixes",
+              current == alias,
+              "the two prefixes returned different payloads; they are no longer "
+              "the same handlers")
+
+    # Reads must stay open to every origin on both prefixes.
+    for prefix in (READ, ALIAS):
+        url = base.rstrip("/") + prefix + "/deptList"
+        request = urllib.request.Request(url)
+        request.add_header("Origin", "https://some-unrelated-site.example")
+        try:
+            with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
+                allowed = response.headers.get("Access-Control-Allow-Origin", "")
+                status = response.status
+        except urllib.error.HTTPError as error:
+            allowed, status = "", error.code
+        except Exception as error:  # noqa: BLE001
+            check(f"{prefix} reads are open to any origin", False, str(error))
+            continue
+
+        check(f"{prefix} reads are open to any origin",
+              status == 200 and allowed in ("*", "https://some-unrelated-site.example"),
+              f"HTTP {status}, Allow-Origin {allowed!r} -- reads appear to have picked up "
+              "the write group's origin allowlist, which breaks every third-party caller")
+
+
 def check_cors_preflight(base: str, origin: str):
     """A browser sends OPTIONS before any JSON POST or PUT.
 
@@ -384,6 +459,7 @@ def main():
     check_filters_bind(args.base)
     check_pagination_is_stable(args.base)
     check_timeout_headroom(args.base)
+    check_alias_parity(args.base)
     check_cors_preflight(args.base, args.origin)
 
     print()
