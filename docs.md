@@ -759,7 +759,6 @@ person or by the automated triage.
 | `/v1/reviews` | GET | Approved reviews for a professor |
 | `/v1/reviews` | POST | Submit a review |
 | `/v1/reviews/verify/:token` | GET | Confirm an emailed link |
-| `/v1/reviews/:id` | PATCH | Edit (manage key) |
 | `/v1/reviews/:id` | DELETE | Withdraw (manage key) |
 | `/v1/reviews/:id/report` | POST | Report a published review |
 | `/v1/admin/reviews` | GET | Moderation queue (admin key) |
@@ -829,14 +828,19 @@ because mail clients prefetch links and people double-click.
 The manage key is also emailed. It cannot be recovered — there is deliberately
 no way to link it back to a person.
 
-## `PATCH` and `DELETE /v1/reviews/:id`
+## `DELETE /v1/reviews/:id`
 
 `Authorization: Bearer <manage key>`.
 
-An edit returns the review to `pending` and it must be approved again;
-otherwise the edit path is a way to get innocuous text approved and then
-replace it. A withdrawal is a soft delete — the row remains so the
-one-review-per-person rule still holds, but the content is actually nulled.
+A withdrawal is a soft delete — the row remains so the one-review-per-person
+rule still holds, but the content is actually nulled.
+
+There is no edit endpoint. A published review is final text: the only way to
+change what a review says is to withdraw it and write another. Editing after
+approval is a way to get innocuous text past a moderator and then replace it,
+and re-queueing every edit for moderation solves that at the cost of a flow
+where a reviewer can silently republish. Withdrawal carries no such hole, so it
+is the one the reviewer keeps.
 
 ## `PUT /v1/admin/reviews/:id`
 

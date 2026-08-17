@@ -106,7 +106,7 @@ func main() {
 
 		v1 := r.Group("/v1")
 		v1.Use(cors.New(cors.Config{
-			AllowOrigins:     cfg.AllowedOrigins,
+			AllowOrigins: cfg.AllowedOrigins,
 			// PUT is here because `admin.PUT /reviews/:id` is the moderation
 			// decision route -- the one a moderator uses to approve or reject.
 			// It was the only verb the group serves that this list omitted, so
@@ -114,7 +114,7 @@ func main() {
 			// it, and the browser refused the request. Anything added to this
 			// group needs its verb here too; the route registering is not what
 			// makes it reachable from a browser.
-			AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+			AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 			AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
 			AllowCredentials: false,
 			MaxAge:           12 * time.Hour,
@@ -148,7 +148,6 @@ func main() {
 		// Reviewer-facing writes.
 		v1.POST("/reviews", reviewServer.HandleSubmit)
 		v1.GET("/reviews/verify/:token", reviewServer.HandleVerify)
-		v1.PATCH("/reviews/:id", reviewServer.HandleEdit)
 		v1.DELETE("/reviews/:id", reviewServer.HandleWithdraw)
 		v1.POST("/reviews/:id/report", reviewServer.HandleReport)
 
@@ -160,6 +159,13 @@ func main() {
 		admin.GET("/reports", AdminAuth(cfg), moderationServer.HandleReports)
 		admin.PUT("/reviews/:id", ModerationAuth(cfg), moderationServer.HandleDecide)
 		admin.POST("/sweep", AdminAuth(cfg), moderationServer.HandleSweep)
+
+		// Instructor matching. Same admin key as moderation: it publishes no
+		// text, but it can merge two real professors' histories, which is not
+		// reversible once merged.
+		admin.GET("/instructors/queue", AdminAuth(cfg), moderationServer.HandleInstructorQueue)
+		admin.GET("/instructors/search", AdminAuth(cfg), moderationServer.HandleInstructorSearch)
+		admin.POST("/instructors/queue/:id", AdminAuth(cfg), moderationServer.HandleInstructorMatch)
 
 		log.Printf("v1 write path enabled for origins %v", cfg.AllowedOrigins)
 	}

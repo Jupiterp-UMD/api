@@ -1318,11 +1318,6 @@
         </tr>
         <tr>
         <td style="text-align:left"><code>/v1/reviews/:id</code></td>
-        <td style="text-align:left">PATCH</td>
-        <td style="text-align:left">Edit (manage key)</td>
-        </tr>
-        <tr>
-        <td style="text-align:left"><code>/v1/reviews/:id</code></td>
         <td style="text-align:left">DELETE</td>
         <td style="text-align:left">Withdraw (manage key)</td>
         </tr>
@@ -1419,12 +1414,16 @@
         because mail clients prefetch links and people double-click.</p>
         <p>The manage key is also emailed. It cannot be recovered — there is deliberately
         no way to link it back to a person.</p>
-        <h2 id="-patch-and-delete-v1-reviews-id-"><code>PATCH</code> and <code>DELETE /v1/reviews/:id</code></h2>
+        <h2 id="-delete-v1-reviews-id-"><code>DELETE /v1/reviews/:id</code></h2>
         <p><code>Authorization: Bearer &lt;manage key&gt;</code>.</p>
-        <p>An edit returns the review to <code>pending</code> and it must be approved again;
-        otherwise the edit path is a way to get innocuous text approved and then
-        replace it. A withdrawal is a soft delete — the row remains so the
-        one-review-per-person rule still holds, but the content is actually nulled.</p>
+        <p>A withdrawal is a soft delete — the row remains so the one-review-per-person
+        rule still holds, but the content is actually nulled.</p>
+        <p>There is no edit endpoint. A published review is final text: the only way to
+        change what a review says is to withdraw it and write another. Editing after
+        approval is a way to get innocuous text past a moderator and then replace it,
+        and re-queueing every edit for moderation solves that at the cost of a flow
+        where a reviewer can silently republish. Withdrawal carries no such hole, so it
+        is the one the reviewer keeps.</p>
         <h2 id="-put-v1-admin-reviews-id-"><code>PUT /v1/admin/reviews/:id</code></h2>
 <pre><code class="language-json">{
   &quot;action&quot;: &quot;approve&quot;,
