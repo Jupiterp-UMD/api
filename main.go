@@ -66,7 +66,26 @@ func main() {
 	// inheriting it would silently stop working from every origin except
 	// jupiterp.com -- including the published npm client.
 
-	permissiveCORS := cors.Default()
+	// `cors.Default()` with one addition: `Content-Range` is exposed.
+	//
+	// Only the CORS-safelisted response headers reach browser JavaScript by
+	// default, and `Content-Range` is not one of them. Without this, a
+	// cross-origin `response.headers.get('Content-Range')` returns null -- not
+	// an error, just null -- so a caller asking for `count=true`, and an API
+	// dutifully computing the count, produced a total the page could never read.
+	//
+	// The professor directory is what this broke. It reads the total to render
+	// "N professors" and to decide whether a "Load More" button exists; with the
+	// total null, the count vanished and `hasMore` was permanently false, so
+	// results were capped at the first page with no way forward. Nothing failed
+	// and nothing logged.
+	permissiveCORS := cors.New(cors.Config{
+		AllowAllOrigins: true,
+		AllowMethods:    []string{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"},
+		AllowHeaders:    []string{"Origin", "Content-Length", "Content-Type"},
+		ExposeHeaders:   []string{"Content-Range"},
+		MaxAge:          12 * time.Hour,
+	})
 
 	/* ========================== STATIC CONTENT =========================== */
 
@@ -145,8 +164,12 @@ func main() {
 			// it, and the browser refused the request. Anything added to this
 			// group needs its verb here too; the route registering is not what
 			// makes it reachable from a browser.
-			AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-			AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
+			AllowMethods: []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+			AllowHeaders: []string{"Origin", "Content-Type", "Authorization"},
+			// `GET /v1/reviews` and the moderation queue paginate the same way
+			// the read surface does, so they need the same header exposed for
+			// the same reason.
+			ExposeHeaders:    []string{"Content-Range"},
 			AllowCredentials: false,
 			MaxAge:           12 * time.Hour,
 		}))

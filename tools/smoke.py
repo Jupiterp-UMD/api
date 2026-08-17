@@ -391,6 +391,99 @@ def check_alias_parity(base: str):
               "the write group's origin allowlist, which breaks every third-party caller")
 
 
+def check_caching_and_pagination_headers(base: str):
+    """Two headers the read surface has to send, both of which were missing.
+
+    `Cache-Control`: every endpoint passed a TTL to its internal cache and told
+    no one, so browsers and CDNs refetched data the service itself considered
+    fresh for up to twelve hours.
+
+    `Access-Control-Expose-Headers`: `Content-Range` is not CORS-safelisted, so
+    without it a cross-origin `headers.get('Content-Range')` returns null. The
+    professor directory read that null as "no total", never rendered its count,
+    and never showed a "Load More" button -- capped at one page, silently.
+    """
+    print("\ncaching and pagination headers")
+
+    for path, params in [
+        (f"{READ}/instructors/active", {"limit": "1"}),
+        (f"{READ}/courses", {"limit": "1"}),
+        (f"{READ}/sections", {"courseCodes": "CMSC132"}),
+        (f"{READ}/deptList", None),
+        (f"{READ}/grades/terms", None),
+    ]:
+        url = base.rstrip("/") + path + (("?" + urllib.parse.urlencode(params)) if params else "")
+        try:
+            with urllib.request.urlopen(urllib.request.Request(url), timeout=TIMEOUT) as response:
+                cache_control = response.headers.get("Cache-Control", "")
+        except Exception as error:  # noqa: BLE001
+            check(f"{path} Cache-Control", False, str(error))
+            continue
+        check(f"{path} declares Cache-Control",
+              "max-age=" in cache_control,
+              f"got {cache_control!r} -- the endpoint has a TTL internally but tells "
+              "no browser or CDN about it")
+
+    # Exposure is origin-dependent, so it is asked for as a browser would.
+    url = base.rstrip("/") + f"{READ}/instructors/active?limit=1&count=true"
+    request = urllib.request.Request(url)
+    request.add_header("Origin", "https://www.jupiterp.com")
+    try:
+        with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
+            exposed = response.headers.get("Access-Control-Expose-Headers", "")
+            content_range = response.headers.get("Content-Range", "")
+    except Exception as error:  # noqa: BLE001
+        check("Content-Range is exposed to browsers", False, str(error))
+        return
+
+    check("count=true returns a real total, not '*'",
+          content_range and not content_range.endswith("/*"),
+          f"Content-Range is {content_range!r}")
+    check("Content-Range is exposed to browsers",
+          "Content-Range" in exposed,
+          f"Access-Control-Expose-Headers is {exposed!r} -- browser JavaScript will "
+          "read null and paginated pages will silently stop after one page")
+
+
+def check_column_selection(base: str):
+    """`columns` must narrow the response, and must reject anything else.
+
+    The value lands in PostgREST's `select`, so an unvalidated one could name
+    columns the endpoint does not publish or embed related tables entirely.
+    """
+    print("\ncolumn selection")
+
+    status, full = get(base, f"{READ}/instructors/active", {"limit": "5"})
+    status2, trimmed = get(base, f"{READ}/instructors/active",
+                           {"limit": "5", "columns": "slug,average_rating"})
+    if status != 200 or status2 != 200:
+        check("columns returns rows", False, f"HTTP {status}/{status2}")
+        return
+
+    trimmed_rows = rows_of(trimmed)
+    if not trimmed_rows:
+        check("columns returns rows", False, "empty response")
+        return
+
+    keys = set(trimmed_rows[0].keys())
+    check("columns returns only what was asked for",
+          keys == {"slug", "average_rating"},
+          f"got {sorted(keys)}")
+
+    full_rows = rows_of(full)
+    if full_rows:
+        check("omitting columns still returns the whole row",
+              len(full_rows[0].keys()) > 2,
+              f"default response has only {sorted(full_rows[0].keys())}")
+
+    # A name that is not a column must 400 rather than fall back to everything.
+    for bad in ("secret_field", "reviews(*)", "slug::text"):
+        status, _ = get(base, f"{READ}/instructors/active", {"limit": "1", "columns": bad})
+        check(f"columns={bad!r} is rejected",
+              status == 400,
+              f"HTTP {status} -- an unrecognised column must not silently return every column")
+
+
 def check_cors_preflight(base: str, origin: str):
     """A browser sends OPTIONS before any JSON POST or PUT.
 
@@ -460,6 +553,8 @@ def main():
     check_pagination_is_stable(args.base)
     check_timeout_headroom(args.base)
     check_alias_parity(args.base)
+    check_caching_and_pagination_headers(args.base)
+    check_column_selection(args.base)
     check_cors_preflight(args.base, args.origin)
 
     print()

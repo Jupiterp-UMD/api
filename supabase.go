@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -218,6 +219,55 @@ func (s SupabaseClient) getCoursesWithSections(args CoursesWithSectionsArgs) (*h
 }
 
 // Get a list of instructors (including inactive ones) and their ratings.
+// The columns an instructor request is allowed to name.
+//
+// Both `instructors` and `active_instructors` carry the same seventeen, so one
+// set covers every table this endpoint reads.
+var instructorColumns = map[string]struct{}{
+	"slug": {}, "name": {}, "average_rating": {}, "id": {}, "name_norm": {},
+	"pt_slug": {}, "pt_average_rating": {}, "pt_review_count": {}, "pt_snapshot_at": {},
+	"jupiterp_rating": {}, "jupiterp_review_count": {}, "combined_rating": {},
+	"first_seen_term": {}, "last_seen_term": {}, "is_active": {},
+	"created_at": {}, "updated_at": {},
+}
+
+// Validate a caller-supplied column list. Returns the names to select, or an
+// error naming the first one that is not a column of this endpoint.
+func validateInstructorColumns(columns string) ([]string, error) {
+	fields := strings.Split(columns, ",")
+	out := make([]string, 0, len(fields))
+	for _, field := range fields {
+		name := strings.TrimSpace(field)
+		if name == "" {
+			continue
+		}
+		if _, ok := instructorColumns[name]; !ok {
+			return nil, fmt.Errorf("unknown column %q", name)
+		}
+		out = append(out, name)
+	}
+	if len(out) == 0 {
+		return nil, errors.New("no columns named")
+	}
+	return out, nil
+}
+
+// The `select` clause for an instructor request. Assumes the column list has
+// already been validated by the handler.
+func instructorSelect(columns string) string {
+	if strings.TrimSpace(columns) == "" {
+		return "*"
+	}
+	names, err := validateInstructorColumns(columns)
+	if err != nil {
+		// Unreachable: handlers validate before calling. Falling back to the
+		// full row keeps a mistake here a performance regression rather than a
+		// query built from unvalidated input.
+		return "*"
+	}
+	return strings.Join(names, ",")
+}
+
 func (s SupabaseClient) getInstructors(args InstructorArgs, table string) (*http.Response, error) {
 	// SELECT * FROM instructors
 	// WHERE instructor_name IN `args.InstructorNames`
@@ -226,7 +276,7 @@ func (s SupabaseClient) getInstructors(args InstructorArgs, table string) (*http
 	// OFFSET `args.Offset` LIMIT `args.Limit`
 	// SORT BY `args.SortBy`
 	params := url.Values{}
-	params.Set("select", "*")
+	params.Set("select", instructorSelect(args.Columns))
 	if args.InstructorNames != "" {
 		params.Set("name", fmt.Sprintf("in.(%s)", args.InstructorNames))
 	}

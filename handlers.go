@@ -22,6 +22,11 @@ const (
 	sectionsTTL    time.Duration = 15 * time.Minute
 	// Grade data changes once a term, when a new records request is fulfilled.
 	gradesTTL time.Duration = 12 * time.Hour
+	// Deliberately short. The cache is per Cloud Run instance with no
+	// cross-instance invalidation, so a newly approved review would otherwise
+	// appear on one refresh and vanish on the next depending on which instance
+	// answered -- and the same reasoning applies to a reader's browser.
+	reviewsTTL time.Duration = 60 * time.Second
 )
 
 // Views backing the /v0/grades/summary endpoint, selected by `groupBy`.
@@ -219,6 +224,21 @@ type InstructorArgs struct {
 	// Return the total number of matching rows in the Content-Range header.
 	// Costs an extra aggregate over the filtered set, so it is opt-in.
 	Count bool `form:"count"`
+
+	// Comma-separated columns to return, instead of the whole row.
+	//
+	// An instructor row is wide -- seventeen columns, most of them PlanetTerp
+	// provenance -- and a caller that wants a rating gets all of it. The course
+	// planner needs exactly `slug` and `average_rating` for all 2,976 active
+	// instructors, which was 1.3MB of which about 6% was read.
+	//
+	// Names are validated against a fixed set rather than forwarded, because
+	// this value lands in PostgREST's `select`, where an unchecked string can
+	// name columns the endpoint does not intend to publish or embed related
+	// tables. An unknown name is rejected rather than dropped: silently
+	// returning a column the caller did not ask for is the failure mode this
+	// whole file keeps running into.
+	Columns string `form:"columns"`
 
 	// Conditions for instructor ratings; for example, gt.3.5
 	Ratings []string `form:"ratings"`
@@ -541,7 +561,34 @@ func buildCacheKey(r *http.Request) string {
 	return base + "?" + strings.Join(filtered, "&")
 }
 
-func writePayload(ctx *gin.Context, payload *cachedPayload, path string) bool {
+// Tell the caller how long this response stays good for.
+//
+// The service has always known this -- every endpoint passes a TTL to its cache
+// -- and has never told anyone. No `Cache-Control`, no `ETag`, nothing. So the
+// server would consider instructor data fresh for twelve hours while every
+// browser and CDN in front of it refetched the same 1.3MB on each page load.
+//
+// The TTL is reused rather than invented, because a second set of numbers would
+// drift from the first. Note that the two caches stack: a response can sit in
+// the service's LRU for up to the TTL and then in a browser for the TTL again,
+// so worst-case staleness is twice the value here. That matters most for
+// `instructors`, where it delays a newly approved rating; shorten that constant
+// if it ever feels long.
+//
+// Only successful responses are marked cacheable. Caching an error would pin it
+// in front of the fix.
+func setCacheControl(ctx *gin.Context, status int, ttl time.Duration) {
+	if status < 200 || status >= 300 || ttl <= 0 {
+		return
+	}
+	seconds := int(ttl.Seconds())
+	ctx.Writer.Header().Set(
+		"Cache-Control",
+		fmt.Sprintf("public, max-age=%d, stale-while-revalidate=%d", seconds, seconds),
+	)
+}
+
+func writePayload(ctx *gin.Context, payload *cachedPayload, path string, ttl time.Duration) bool {
 	header := ctx.Writer.Header()
 	replacedKeys := make(map[string]struct{}, len(payload.header))
 	for k := range payload.header {
@@ -559,6 +606,11 @@ func writePayload(ctx *gin.Context, payload *cachedPayload, path string) bool {
 			header.Add(canonicalKey, v)
 		}
 	}
+	// After the upstream headers are applied, so it cannot be overwritten by a
+	// `Cache-Control` copied from PostgREST, and before the body is written,
+	// since that is what flushes them.
+	setCacheControl(ctx, payload.status, ttl)
+
 	ctx.Status(payload.status)
 	if _, err := ctx.Writer.Write(payload.body); err != nil {
 		_ = ctx.Error(err)
@@ -581,13 +633,13 @@ func buildPayloadFromResponse(res *http.Response) (*cachedPayload, error) {
 	}, nil
 }
 
-func (client SupabaseClient) serveFromCache(ctx *gin.Context, path, key string) bool {
+func (client SupabaseClient) serveFromCache(ctx *gin.Context, path, key string, ttl time.Duration) bool {
 	payload, ok := client.cacheFor(path).Get(key)
 	if !ok {
 		log.Printf("Cache MISS for GET %s with key %s", path, key)
 		return false
 	}
-	if writePayload(ctx, payload, path) {
+	if writePayload(ctx, payload, path, ttl) {
 		log.Printf("Cache HIT and served GET %s from cache with status %d", path, payload.status)
 	}
 
@@ -601,7 +653,7 @@ func (client SupabaseClient) writeAndCacheResponse(ctx *gin.Context, res *http.R
 		sendInternalError(ctx, path, err)
 		return
 	}
-	if writePayload(ctx, payload, path) {
+	if writePayload(ctx, payload, path, ttl) {
 		log.Printf("Successfully handled GET %s with status %s", path, statusText)
 	}
 	if res.StatusCode < http.StatusInternalServerError {
@@ -645,7 +697,7 @@ func (client SupabaseClient) getCoursesAndSendResponse(
 	args.setDefaults()
 
 	key := buildCacheKey(ctx.Request)
-	if client.serveFromCache(ctx, path, key) {
+	if client.serveFromCache(ctx, path, key, ttl) {
 		return
 	}
 
@@ -671,10 +723,18 @@ func (client SupabaseClient) getInstructorsAndSendResponse(
 		sendInvalidArgsError(ctx, reflect.TypeOf(args), path, errors.New("cannot specify both instructorNames and instructorSlugs"))
 		return
 	}
+	// Rejected here rather than in the query builder, so a typo answers with
+	// the name that was wrong instead of quietly returning every column.
+	if args.Columns != "" {
+		if _, err := validateInstructorColumns(args.Columns); err != nil {
+			sendInvalidArgsError(ctx, reflect.TypeOf(args), path, err)
+			return
+		}
+	}
 	args.setDefaults()
 
 	key := buildCacheKey(ctx.Request)
-	if client.serveFromCache(ctx, path, key) {
+	if client.serveFromCache(ctx, path, key, ttl) {
 		return
 	}
 
@@ -735,7 +795,7 @@ func (client SupabaseClient) handleCoursesWithSections(ctx *gin.Context) {
 	args.setDefaults()
 
 	key := buildCacheKey(ctx.Request)
-	if client.serveFromCache(ctx, path, key) {
+	if client.serveFromCache(ctx, path, key, sectionsTTL) {
 		return
 	}
 
@@ -761,7 +821,7 @@ func (client SupabaseClient) handleGetSections(ctx *gin.Context) {
 	args.setDefaults()
 
 	key := buildCacheKey(ctx.Request)
-	if client.serveFromCache(ctx, path, key) {
+	if client.serveFromCache(ctx, path, key, sectionsTTL) {
 		return
 	}
 
@@ -792,7 +852,7 @@ func (client SupabaseClient) handleGetDepartments(ctx *gin.Context) {
 	path := "deptList"
 
 	key := buildCacheKey(ctx.Request)
-	if client.serveFromCache(ctx, path, key) {
+	if client.serveFromCache(ctx, path, key, departmentsTTL) {
 		return
 	}
 
@@ -827,7 +887,7 @@ func (client SupabaseClient) handleGetGrades(ctx *gin.Context) {
 	args.setDefaults()
 
 	key := buildCacheKey(ctx.Request)
-	if client.serveFromCache(ctx, path, key) {
+	if client.serveFromCache(ctx, path, key, gradesTTL) {
 		return
 	}
 
@@ -891,7 +951,7 @@ func (client SupabaseClient) handleGetGradeSummary(ctx *gin.Context) {
 	}
 
 	key := buildCacheKey(ctx.Request)
-	if client.serveFromCache(ctx, path, key) {
+	if client.serveFromCache(ctx, path, key, gradesTTL) {
 		return
 	}
 
@@ -910,7 +970,7 @@ func (client SupabaseClient) handleGetGradeTerms(ctx *gin.Context) {
 	path := "grades/terms"
 
 	key := buildCacheKey(ctx.Request)
-	if client.serveFromCache(ctx, path, key) {
+	if client.serveFromCache(ctx, path, key, gradesTTL) {
 		return
 	}
 

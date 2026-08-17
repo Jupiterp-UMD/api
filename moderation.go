@@ -384,7 +384,10 @@ func (client SupabaseClient) HandleListReviews(ctx *gin.Context) {
 	}
 
 	key := buildCacheKey(ctx.Request)
-	if client.serveFromCache(ctx, path, key) {
+	// Same 60s as the write below, for the same reason: a newly approved review
+	// should not be held back from a reader for longer than the service holds
+	// it itself.
+	if client.serveFromCache(ctx, path, key, reviewsTTL) {
 		return
 	}
 
@@ -398,7 +401,7 @@ func (client SupabaseClient) HandleListReviews(ctx *gin.Context) {
 	// cross-instance invalidation, so a newly approved review would otherwise
 	// appear on one refresh and vanish on the next depending on which instance
 	// answered.
-	client.writeAndCacheResponse(ctx, res, path, key, 60*time.Second)
+	client.writeAndCacheResponse(ctx, res, path, key, reviewsTTL)
 }
 
 func derefFloat(f *float64) float64 {
