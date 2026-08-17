@@ -183,6 +183,11 @@ type SectionsArgs struct {
 
 	// Instructor name filter (case sensitive, exact contains match)
 	Instructor string `form:"instructor"`
+
+	// Instructor slug filter. Prefer this over `instructor`: it matches the
+	// resolved instructor rather than a string, so it still finds a professor
+	// whose Testudo spelling differs from their canonical record.
+	InstructorSlug string `form:"instructorSlug"`
 }
 
 func (s *SectionsArgs) setDefaults() {
@@ -234,6 +239,26 @@ type InstructorArgs struct {
 func (i *InstructorArgs) setDefaults() {
 	if i.Limit == 0 {
 		i.Limit = 100
+	}
+	// A total order by default, so paging is stable.
+	//
+	// Postgres promises no particular row order without ORDER BY, and does not
+	// repeat the same arbitrary order between queries. Any client paging this
+	// endpoint with limit/offset therefore skips some rows and receives others
+	// twice: walking `instructors/active` returned all 2,976 rows but only
+	// 2,336 distinct professors, and a different ~640 went missing each time.
+	//
+	// It surfaced as a professor who linked to their page from the professor
+	// search but rendered as unlinked plain text in the planner, changing on
+	// every reload. The default belongs here rather than in each client,
+	// because a caller cannot tell from a correct-looking page that anything
+	// was dropped.
+	//
+	// `slug` because it is unique: the order is total, so no two rows can tie
+	// and straddle a page boundary. An explicit sortBy still wins, and callers
+	// that pass one are responsible for its stability.
+	if i.SortBy == "" {
+		i.SortBy = "slug.asc"
 	}
 }
 

@@ -146,7 +146,13 @@ func (s SupabaseClient) getSections(args SectionsArgs) (*http.Response, error) {
 	if args.Instructor != "" {
 		params.Set("instructors", fmt.Sprintf("cs.{%s}", args.Instructor))
 	}
-	return s.request("sections", params.Encode())
+	if args.InstructorSlug != "" {
+		params.Set("instructor_slugs", fmt.Sprintf("cs.{%s}", args.InstructorSlug))
+	}
+	// The view rather than the table: it carries `instructor_slugs`, the
+	// resolved slug for each name in `instructors`, so a client can link a
+	// professor without matching on their name. See migration 0024.
+	return s.request("sections_with_instructors", params.Encode())
 }
 
 func (s SupabaseClient) getCoursesWithSections(args CoursesWithSectionsArgs) (*http.Response, error) {
@@ -164,7 +170,10 @@ func (s SupabaseClient) getCoursesWithSections(args CoursesWithSectionsArgs) (*h
 	// SORT BY `args.SortBy`
 
 	params := url.Values{}
-	selectStr := "*,sections"
+	// `sections:sections_with_instructors` embeds the view but keeps the JSON
+	// key `sections`, so the response shape is unchanged for existing clients
+	// while every section gains `instructor_slugs`.
+	selectStr := "*,sections:sections_with_instructors"
 	if args.TotalClassSize != nil || args.OnlyOpen || args.Instructor != "" {
 		selectStr += "!inner(*)"
 	} else {

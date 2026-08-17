@@ -112,6 +112,27 @@ func main() {
 			MaxAge:           12 * time.Hour,
 		}))
 
+		// Answer CORS preflight.
+		//
+		// Gin routes by method, and group middleware only runs once a route in
+		// that group matches. With no OPTIONS handler registered, an OPTIONS
+		// request fell through to the engine's 404 and the CORS middleware above
+		// -- the thing meant to answer it -- never ran.
+		//
+		// That broke every browser write. A POST carrying
+		// `Content-Type: application/json` is not a simple request, so the
+		// browser preflights it first; the preflight 404s, the browser refuses
+		// to send the POST, and the form sits on "sending" with no error the
+		// server ever sees. Reads were unaffected, which is why this looked like
+		// a submission bug rather than a CORS one.
+		//
+		// The handler body is never reached for an allowed origin -- the CORS
+		// middleware aborts with 204 first -- but registering the route is what
+		// puts the middleware in the chain at all.
+		v1.OPTIONS("/*path", func(ctx *gin.Context) {
+			ctx.Status(http.StatusNoContent)
+		})
+
 		// Public reads of approved reviews. Served from public_reviews, which
 		// cannot expose an unapproved row or an identity column.
 		v1.GET("/reviews", client.HandleListReviews)
