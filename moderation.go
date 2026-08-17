@@ -334,14 +334,18 @@ func (m *ModerationServer) HandleSweep(ctx *gin.Context) {
 		log.Printf("sweep: email flush failed: %v", err)
 	}
 
-	var ratingsUpdated []int
+	// Scalar, not an array: `refresh_instructor_ratings` returns `integer` and
+	// is not set-returning, so PostgREST sends a bare number. Decoding into
+	// []int failed on every sweep -- logged and non-fatal, so the nightly
+	// rating recompute never ran and nothing said so.
+	var ratingsUpdated *int
 	if err := m.write.RPC("refresh_instructor_ratings", map[string]any{}, &ratingsUpdated); err != nil {
 		log.Printf("sweep: rating refresh failed: %v", err)
 	}
 
 	updated := 0
-	if len(ratingsUpdated) > 0 {
-		updated = ratingsUpdated[0]
+	if ratingsUpdated != nil {
+		updated = *ratingsUpdated
 	}
 
 	ctx.JSON(http.StatusOK, gin.H{

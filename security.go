@@ -189,7 +189,17 @@ var (
 // new value, so two concurrent submissions cannot both observe a count below
 // the limit and both proceed.
 func checkRateLimit(w *WriteClient, bucket string, limit RateLimit) (bool, error) {
-	var count []int
+	// A pointer, not a slice and not a bare int.
+	//
+	// `bump_rate_limit` returns `integer` and is not set-returning, so
+	// PostgREST answers with a bare JSON scalar (`5`), not an array. Decoding
+	// that into []int fails with "cannot unmarshal number into Go value of
+	// type []int", which surfaced as every submission returning 503.
+	//
+	// A plain int would decode, but a SQL null would become 0 and 0 <= Max
+	// allows the request -- the limiter would fail open on exactly the error
+	// it exists to catch. A pointer keeps null distinguishable from zero.
+	var count *int
 	err := w.RPC("bump_rate_limit", map[string]any{
 		"p_bucket": bucket,
 		"p_action": limit.Action,
@@ -198,12 +208,12 @@ func checkRateLimit(w *WriteClient, bucket string, limit RateLimit) (bool, error
 	if err != nil {
 		return false, err
 	}
-	if len(count) == 0 {
+	if count == nil {
 		// A limiter that fails open is worse than one that fails closed here:
 		// the endpoint it guards writes user content to a public site.
 		return false, fmt.Errorf("rate limiter returned no count")
 	}
-	return count[0] <= limit.Max, nil
+	return *count <= limit.Max, nil
 }
 
 // clientIP extracts the caller's address behind Cloud Run's proxy.

@@ -117,13 +117,17 @@ func (e *EmailSender) deliver(row outboxRow) error {
 		return e.abandon(row, "no recipient")
 	}
 
-	subject, html := renderTemplate(e.cfg, row)
+	subject, html, text := renderTemplate(e.cfg, row)
 
 	body := map[string]any{
 		"sender":      map[string]string{"email": e.cfg.EmailFrom, "name": e.cfg.EmailFromName},
 		"to":          []map[string]string{{"email": *row.Recipient}},
 		"subject":     subject,
 		"htmlContent": html,
+		// Sent alongside the HTML, not instead of it. HTML-only mail scores
+		// worse with spam filters than the same message with a text part, and
+		// this is a transactional link people need to receive.
+		"textContent": text,
 	}
 	encoded, err := json.Marshal(body)
 	if err != nil {
@@ -202,10 +206,112 @@ func (e *EmailSender) abandon(row outboxRow, reason string) error {
 
 // renderTemplate builds the subject and body for one queued message.
 //
-// Plain, unbranded HTML on purpose: mail that looks like marketing is filtered
-// like marketing, and a verification link in a spam folder is indistinguishable
-// from a broken feature.
-func renderTemplate(cfg *Config, row outboxRow) (string, string) {
+// Brand tokens, mirrored from site/src/themes.css.
+//
+// Duplicated rather than imported because an email carries no stylesheet: every
+// rule has to travel inside the message. If the site's palette changes, these
+// are the values to change with it.
+const (
+	emailFont     = "'Cabin', Arial, Helvetica, sans-serif"
+	colorOrange   = "#f5692e"
+	colorBg       = "#ffffff"
+	colorBgAlt    = "#ebebeb"
+	colorText     = "#000000"
+	colorTextSub  = "#667085"
+	colorBorder   = "#f1f1f1"
+	colorDarkBg   = "#151922"
+	colorDarkAlt  = "#141721"
+	colorDarkText = "#d9dfea"
+	colorDarkBord = "#252e3e"
+)
+
+// emailShell wraps body content in the Jupiterp frame.
+//
+// Branded, but deliberately not marketing-shaped, which is the tension the
+// previous plain version was avoiding: mail that looks like a campaign gets
+// filtered like one, and a verification link in a spam folder is
+// indistinguishable from a broken feature. So the things that actually drive
+// that classification are avoided rather than decorated around --
+//
+//   - no images of any kind, so nothing is blocked by default, nothing leaks a
+//     tracking pixel, and the message renders identically before and after the
+//     "display images" prompt. The wordmark is text in the brand colour.
+//   - one link, the one the reader asked for. No social icons, no footer menu.
+//   - a plain-text alternative alongside the HTML (see deliver), because
+//     HTML-only mail is one of the cheapest spam signals to trip.
+//
+// Tables and inline styles because email clients are not browsers: Outlook
+// renders through Word, and flexbox, grid, and most positioning do not survive.
+// Dark mode rides on a <style> block, which Apple Mail and iOS honour and the
+// rest ignore -- so the inline light styles have to stand on their own.
+func emailShell(preheader, heading, body string) string {
+	return `<!doctype html><html><head><meta charset="utf-8">` +
+		`<meta name="viewport" content="width=device-width,initial-scale=1">` +
+		`<meta name="color-scheme" content="light dark">` +
+		`<style>` +
+		`@media (prefers-color-scheme:dark){` +
+		`.jp-bg{background:` + colorDarkBg + ` !important}` +
+		`.jp-card{background:` + colorDarkAlt + ` !important;border-color:` + colorDarkBord + ` !important}` +
+		`.jp-text{color:` + colorDarkText + ` !important}` +
+		`.jp-code{background:` + colorDarkBg + ` !important;border-color:` + colorDarkBord + ` !important;color:` + colorDarkText + ` !important}` +
+		`}` +
+		`</style></head>` +
+		`<body class="jp-bg" style="margin:0;padding:0;background:` + colorBgAlt + `;">` +
+		// Preheader: the grey line the inbox shows next to the subject. Hidden
+		// in the body itself, then padded so the client does not pull the
+		// following markup into the preview.
+		`<div style="display:none;max-height:0;overflow:hidden;opacity:0;">` + preheader +
+		`&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;</div>` +
+		`<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="jp-bg" style="background:` + colorBgAlt + `;">` +
+		`<tr><td align="center" style="padding:32px 16px;">` +
+		`<table role="presentation" width="560" cellpadding="0" cellspacing="0" border="0" style="width:560px;max-width:100%;">` +
+		// Wordmark.
+		`<tr><td style="padding:0 4px 16px 4px;font-family:` + emailFont + `;font-size:20px;font-weight:700;letter-spacing:-0.01em;color:` + colorOrange + `;">` +
+		`Jupiterp</td></tr>` +
+		// Card.
+		`<tr><td class="jp-card" style="background:` + colorBg + `;border:1px solid ` + colorBorder + `;border-radius:12px;padding:32px;">` +
+		`<h1 class="jp-text" style="margin:0 0 16px 0;font-family:` + emailFont + `;font-size:22px;line-height:1.3;font-weight:700;color:` + colorText + `;">` +
+		heading + `</h1>` + body +
+		`</td></tr>` +
+		// Footer.
+		`<tr><td style="padding:20px 4px 0 4px;font-family:` + emailFont + `;font-size:12px;line-height:1.6;color:` + colorTextSub + `;">` +
+		`Jupiterp &middot; course planning and professor reviews for UMD` +
+		`</td></tr>` +
+		`</table></td></tr></table></body></html>`
+}
+
+// para is body copy inside the card.
+func para(html string) string {
+	return `<p class="jp-text" style="margin:0 0 14px 0;font-family:` + emailFont +
+		`;font-size:15px;line-height:1.6;color:` + colorText + `;">` + html + `</p>`
+}
+
+// note is the smaller, secondary copy: the privacy explanation and the
+// "if this wasn't you" line. Secondary colour is identical in both themes, so
+// it needs no dark override.
+func note(html string) string {
+	return `<p style="margin:16px 0 0 0;font-family:` + emailFont +
+		`;font-size:13px;line-height:1.6;color:` + colorTextSub + `;">` + html + `</p>`
+}
+
+// button is a table-based call to action.
+//
+// An <a> with padding is dropped by Outlook, which is exactly the client where
+// a missed verification link is least likely to be reported and most likely to
+// be read as "the site is broken". The bare URL underneath covers whatever
+// still fails to render it.
+func button(label, href string) string {
+	return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0;">` +
+		`<tr><td align="center" bgcolor="` + colorOrange + `" style="border-radius:8px;">` +
+		`<a href="` + href + `" style="display:inline-block;padding:13px 28px;font-family:` + emailFont +
+		`;font-size:15px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:8px;">` +
+		label + `</a></td></tr></table>`
+}
+
+// renderTemplate returns the subject, the HTML body, and the plain-text
+// alternative. The text part is not a fallback nobody reads: sending HTML with
+// no text alternative is one of the cheapest ways to be scored as bulk mail.
+func renderTemplate(cfg *Config, row outboxRow) (string, string, string) {
 	str := func(key string) string {
 		if v, ok := row.Payload[key].(string); ok {
 			return v
@@ -216,35 +322,76 @@ func renderTemplate(cfg *Config, row outboxRow) (string, string) {
 	switch row.Template {
 	case "verify", "resend_verify":
 		link := cfg.SiteBaseURL + "/review/verify?token=" + url.QueryEscape(str("token"))
-		return "Confirm your Jupiterp review", fmt.Sprintf(
-			`<p>Someone (hopefully you) wrote a review of %s on Jupiterp.</p>`+
-				`<p><a href="%s">Confirm it here</a>. The link expires in 48 hours.</p>`+
-				`<p>Your review will not appear until it has been read by a moderator.</p>`+
-				`<p>If this wasn't you, ignore this email and nothing will be published. `+
-				`We store your address only as an irreversible hash, to check you're at UMD `+
-				`and to stop duplicate reviews. It is never shown to anyone, including the `+
-				`professor.</p>`,
-			htmlEscape(str("instructor_name")), link)
+		name := htmlEscape(str("instructor_name"))
+
+		html := emailShell(
+			"Confirm your review and it will go to a moderator.",
+			"Confirm your review",
+			para("Someone (hopefully you) wrote a review of <strong>"+name+"</strong> on Jupiterp.")+
+				button("Confirm my review", link)+
+				para(`The link expires in 48 hours. Your review will not appear until it has been read by a moderator.`)+
+				note(`If the button does not work, paste this into your browser:<br>`+
+					`<span style="word-break:break-all;color:`+colorTextSub+`;">`+htmlEscape(link)+`</span>`)+
+				note(`If this wasn't you, ignore this email and nothing will be published. `+
+					`We store your address only as an irreversible hash, to check you're at UMD `+
+					`and to stop duplicate reviews. It is never shown to anyone, including the professor.`))
+
+		text := "Someone (hopefully you) wrote a review of " + str("instructor_name") + " on Jupiterp.\n\n" +
+			"Confirm it here (the link expires in 48 hours):\n" + link + "\n\n" +
+			"Your review will not appear until it has been read by a moderator.\n\n" +
+			"If this wasn't you, ignore this email and nothing will be published. " +
+			"We store your address only as an irreversible hash, to check you're at UMD " +
+			"and to stop duplicate reviews. It is never shown to anyone, including the professor.\n"
+
+		return "Confirm your Jupiterp review", html, text
 
 	case "manage_key":
-		return "Your Jupiterp review management key", fmt.Sprintf(
-			`<p>Thanks for confirming your review of %s. It is now awaiting moderation.</p>`+
-				`<p>Keep this key if you want to edit or withdraw it later:</p>`+
-				`<p><code>%s</code></p>`+
-				`<p>We cannot recover it for you, because we have no way to link it back to `+
-				`you.</p>`,
-			htmlEscape(str("instructor_name")), htmlEscape(str("manage_key")))
+		name := htmlEscape(str("instructor_name"))
+		key := htmlEscape(str("manage_key"))
+
+		html := emailShell(
+			"Keep this key to edit or withdraw your review later.",
+			"Your review is awaiting moderation",
+			para("Thanks for confirming your review of <strong>"+name+"</strong>.")+
+				para("Keep this key if you want to edit or withdraw it later:")+
+				`<div class="jp-code" style="margin:0 0 14px 0;padding:14px 16px;background:`+colorBgAlt+
+				`;border:1px solid `+colorBorder+`;border-radius:8px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;`+
+				`font-size:14px;line-height:1.5;color:`+colorText+`;word-break:break-all;">`+key+`</div>`+
+				note("We cannot recover it for you, because we have no way to link it back to you."))
+
+		text := "Thanks for confirming your review of " + str("instructor_name") + ". It is now awaiting moderation.\n\n" +
+			"Keep this key if you want to edit or withdraw it later:\n\n" +
+			"    " + str("manage_key") + "\n\n" +
+			"We cannot recover it for you, because we have no way to link it back to you.\n"
+
+		return "Your Jupiterp review management key", html, text
 
 	case "rejected":
-		return "Your Jupiterp review was not published", fmt.Sprintf(
-			`<p>Your review of %s was not published.</p>`+
-				`<p>Reason given: %s</p>`+
-				`<p>If you think that was a mistake, reply to this email and a person will `+
-				`look at it again. You can also submit a revised review.</p>`,
-			htmlEscape(str("instructor_name")), htmlEscape(str("reason")))
+		name := htmlEscape(str("instructor_name"))
+		reason := htmlEscape(str("reason"))
+
+		html := emailShell(
+			"Your review was not published.",
+			"Your review was not published",
+			para("Your review of <strong>"+name+"</strong> was not published.")+
+				`<div class="jp-code" style="margin:0 0 14px 0;padding:14px 16px;background:`+colorBgAlt+
+				`;border-left:3px solid `+colorOrange+`;border-radius:6px;font-family:`+emailFont+
+				`;font-size:14px;line-height:1.6;color:`+colorText+`;">`+reason+`</div>`+
+				para("If you think that was a mistake, reply to this email and a person will "+
+					"look at it again. You can also submit a revised review."))
+
+		text := "Your review of " + str("instructor_name") + " was not published.\n\n" +
+			"Reason given: " + str("reason") + "\n\n" +
+			"If you think that was a mistake, reply to this email and a person will look at it again. " +
+			"You can also submit a revised review.\n"
+
+		return "Your Jupiterp review was not published", html, text
 	}
 
-	return "Jupiterp", "<p>This message was sent in error.</p>"
+	return "Jupiterp",
+		emailShell("This message was sent in error.", "Sent in error",
+			para("This message was sent in error.")),
+		"This message was sent in error.\n"
 }
 
 // htmlEscape escapes the few characters that matter in an email body.
