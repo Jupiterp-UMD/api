@@ -1,4 +1,4 @@
-module gin
+module github.com/Jupiterp-UMD/api
 
 go 1.25.0
 

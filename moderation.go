@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -82,31 +83,104 @@ func (m *ModerationServer) HandleQueue(ctx *gin.Context) {
 		LastDecision map[string]any `json:"last_decision"`
 	}
 
+	// Two batched lookups, not two per row.
+	//
+	// This loop used to issue one instructor query and one decision query for
+	// every review it returned: 101 sequential PostgREST round trips behind a
+	// single moderator page load at the default limit, growing linearly with
+	// the queue. Both are now `in.(...)` lookups joined in memory, so the
+	// handler costs three requests regardless of queue depth.
+	names := m.instructorNames(items)
+	decisions := m.latestDecisions(items)
+
 	out := make([]enriched, 0, len(items))
 	for _, item := range items {
-		row := enriched{queueItem: item}
-
-		var instructors []instructorRow
-		if err := m.write.Select("instructors", eqSelect("id", fmt.Sprintf("%d", item.InstructorID)), &instructors); err == nil && len(instructors) > 0 {
-			row.Instructor = instructors[0].Name
-		}
-
-		decisionParams := url.Values{}
-		decisionParams.Set("select", "decision,decided_by,actor,confidence,categories,reason,applied,created_at")
-		decisionParams.Set("review_id", "eq."+item.ID)
-		decisionParams.Set("order", "created_at.desc")
-		decisionParams.Set("limit", "1")
-
-		var decisions []map[string]any
-		if err := m.write.Select("moderation_decisions", decisionParams, &decisions); err == nil && len(decisions) > 0 {
-			row.LastDecision = decisions[0]
-		}
-
-		out = append(out, row)
+		out = append(out, enriched{
+			queueItem:    item,
+			Instructor:   names[item.InstructorID],
+			LastDecision: decisions[item.ID],
+		})
 	}
 
 	ctx.JSON(http.StatusOK, gin.H{"reviews": out, "count": len(out)})
 }
+
+// instructorNames resolves every instructor named in the queue in one request.
+func (m *ModerationServer) instructorNames(items []queueItem) map[int64]string {
+	names := make(map[int64]string, len(items))
+	if len(items) == 0 {
+		return names
+	}
+
+	seen := make(map[int64]struct{}, len(items))
+	ids := make([]string, 0, len(items))
+	for _, item := range items {
+		if _, dup := seen[item.InstructorID]; dup {
+			continue
+		}
+		seen[item.InstructorID] = struct{}{}
+		ids = append(ids, strconv.FormatInt(item.InstructorID, 10))
+	}
+
+	params := url.Values{}
+	params.Set("select", "id,slug,name")
+	params.Set("id", "in.("+strings.Join(ids, ",")+")")
+
+	var rows []instructorRow
+	if err := m.write.Select("instructors", params, &rows); err != nil {
+		log.Printf("moderation: batch instructor lookup failed: %v", err)
+		return names
+	}
+	for _, row := range rows {
+		names[row.ID] = row.Name
+	}
+	return names
+}
+
+// latestDecisions returns the most recent decision per review, in one request.
+//
+// PostgREST cannot express "latest per group", so this fetches the decisions
+// for these reviews newest-first and keeps the first one seen for each. The
+// per-review cap is what bounds the response: a review that has been through
+// triage several times has a handful of rows, not an unbounded history.
+func (m *ModerationServer) latestDecisions(items []queueItem) map[string]map[string]any {
+	latest := make(map[string]map[string]any, len(items))
+	if len(items) == 0 {
+		return latest
+	}
+
+	ids := make([]string, 0, len(items))
+	for _, item := range items {
+		ids = append(ids, item.ID)
+	}
+
+	params := url.Values{}
+	params.Set("select", "review_id,decision,decided_by,actor,confidence,categories,reason,applied,created_at")
+	params.Set("review_id", "in.("+strings.Join(ids, ",")+")")
+	params.Set("order", "created_at.desc")
+	params.Set("limit", strconv.Itoa(len(ids)*decisionsPerReviewCap))
+
+	var rows []map[string]any
+	if err := m.write.Select("moderation_decisions", params, &rows); err != nil {
+		log.Printf("moderation: batch decision lookup failed: %v", err)
+		return latest
+	}
+	for _, row := range rows {
+		reviewID, _ := row["review_id"].(string)
+		if reviewID == "" {
+			continue
+		}
+		if _, have := latest[reviewID]; have {
+			continue
+		}
+		latest[reviewID] = row
+	}
+	return latest
+}
+
+// How many decision rows to allow for per review when batching. Generous
+// enough that the newest is always in the window.
+const decisionsPerReviewCap = 8
 
 /* =============================== decide ================================= */
 
@@ -124,6 +198,12 @@ func (m *ModerationServer) HandleDecide(ctx *gin.Context) {
 	reviewID := ctx.Param("id")
 	actorKind, _ := ctx.Get("actor")
 	decidedBy, _ := actorKind.(string)
+	// Who, as distinct from what kind. Falls back to decidedBy so a deployment
+	// with only the shared REVIEW_ADMIN_KEY behaves exactly as before.
+	moderatorName := ctx.GetString("moderator")
+	if moderatorName == "" {
+		moderatorName = decidedBy
+	}
 
 	var req DecisionRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
@@ -160,7 +240,7 @@ func (m *ModerationServer) HandleDecide(ctx *gin.Context) {
 	// State guard. Only pending and escalated reviews are decidable. A late
 	// retry must not silently overturn what a human already concluded.
 	if review.Status != "pending" && review.Status != "escalated" {
-		m.recordDecision(reviewID, req, decidedBy, false)
+		m.recordDecision(reviewID, req, decidedBy, moderatorName, false)
 		ctx.JSON(http.StatusConflict, gin.H{
 			"error":  "review is " + review.Status + " and is no longer awaiting a decision",
 			"status": review.Status,
@@ -186,7 +266,7 @@ func (m *ModerationServer) HandleDecide(ctx *gin.Context) {
 		}
 	}
 
-	m.recordDecision(reviewID, req, decidedBy, apply)
+	m.recordDecision(reviewID, req, decidedBy, moderatorName, apply)
 
 	if !apply {
 		// Recorded, not acted on. The review still needs a person, so make
@@ -204,7 +284,7 @@ func (m *ModerationServer) HandleDecide(ctx *gin.Context) {
 		return
 	}
 
-	moderator := decidedBy
+	moderator := moderatorName
 	if req.Model != "" {
 		moderator = req.Model
 	}
@@ -218,11 +298,21 @@ func (m *ModerationServer) HandleDecide(ctx *gin.Context) {
 			derefFloat(req.Confidence), req.Categories, req.Reason)
 	}
 
+	// Approve and reject are terminal: neither generates further mail, so the
+	// reviewer's address is dropped here. Escalate is not terminal -- the
+	// review is still headed for a decision that may need to notify them.
+	if req.Action == "approve" || req.Action == "reject" {
+		m.email.PurgeContact(reviewID)
+	}
+
 	ctx.JSON(http.StatusOK, gin.H{"status": targetStatus, "applied": true, "changed": true})
 }
 
-func (m *ModerationServer) recordDecision(reviewID string, req DecisionRequest, decidedBy string, applied bool) {
-	actor := decidedBy
+func (m *ModerationServer) recordDecision(reviewID string, req DecisionRequest, decidedBy, moderatorName string, applied bool) {
+	// `decided_by` stays coarse -- "human" or "ai" -- because that is what the
+	// shadow-mode gates key off. `actor` is the specific one: a model name when
+	// a classifier decided, otherwise the named moderator.
+	actor := moderatorName
 	if req.Model != "" {
 		actor = req.Model
 	}
@@ -272,32 +362,34 @@ func (m *ModerationServer) setStatus(reviewID, status, moderator, reason string)
 // A rejection with no explanation and no way to contest it is how a moderation
 // system loses the people who were writing good reviews.
 func (m *ModerationServer) notifyRejection(review reviewRow, reason string) {
-	params := url.Values{}
-	params.Set("select", "recipient,payload")
-	params.Set("review_id", "eq."+review.ID)
-	params.Set("template", "eq.verify")
-	params.Set("limit", "1")
+	// The address survives until the review reaches a terminal state, which is
+	// exactly this moment. Previously it was destroyed when the verification
+	// mail was sent -- always before any rejection could happen -- so this
+	// function returned early every time and the `rejected` template was
+	// unreachable code.
+	recipient := m.email.RecipientFor(review.ID)
+	if recipient == "" {
+		return
+	}
 
-	var rows []outboxRow
-	if err := m.write.Select("email_outbox", params, &rows); err != nil || len(rows) == 0 {
-		return
+	name := ""
+	var instructors []instructorRow
+	if err := m.write.Select("instructors", eqSelect("id", fmt.Sprintf("%d", review.InstructorID)), &instructors); err == nil && len(instructors) > 0 {
+		name = instructors[0].Name
 	}
-	// The address is nulled once the verification mail is sent, so this only
-	// reaches people whose rejection happened before that. Deliberate: keeping
-	// addresses around longer to enable rejection mail would undo the decision
-	// not to store them.
-	if rows[0].Recipient == nil || *rows[0].Recipient == "" {
-		return
-	}
-	name, _ := rows[0].Payload["instructor_name"].(string)
+
 	if reason == "" {
 		reason = "It did not meet the content policy."
 	}
-	if err := m.email.Queue(review.ID, *rows[0].Recipient, "rejected", map[string]any{
+	if err := m.email.Queue(review.ID, recipient, "rejected", map[string]any{
 		"instructor_name": name,
 		"reason":          reason,
 	}); err != nil {
 		log.Printf("moderation: queueing rejection email failed: %v", err)
+	}
+	// Deliver before the purge below removes the address.
+	if _, err := m.email.Flush(5); err != nil {
+		log.Printf("moderation: flushing rejection email failed: %v", err)
 	}
 }
 
@@ -327,11 +419,26 @@ func (m *ModerationServer) HandleReports(ctx *gin.Context) {
 // scales to zero: a ticker in a container that is not running does not tick.
 // Cloud Scheduler calls this.
 func (m *ModerationServer) HandleSweep(ctx *gin.Context) {
+	// Component failures are reported, not just logged.
+	//
+	// This handler used to answer 200 with a body of counts even when every
+	// step inside it had failed. That is the shape of most of the bugs this
+	// service has had: the rating recompute failing on a type error, the
+	// matview refresh failing on ownership, PostgREST scalars failing to
+	// decode. Each ran broken for weeks because the only signal was a log line
+	// nobody was watching, and the scheduler saw a success either way.
+	//
+	// Now a partial failure answers 207 and names what broke, so Cloud
+	// Scheduler's own alerting is enough to surface it.
+	failures := map[string]string{}
+
 	retried, escalated := m.triage.Sweep()
 	purged := m.triage.PurgeAbandoned()
+
 	sent, err := m.email.Flush(50)
 	if err != nil {
 		log.Printf("sweep: email flush failed: %v", err)
+		failures["email_flush"] = err.Error()
 	}
 
 	// Scalar, not an array: `refresh_instructor_ratings` returns `integer` and
@@ -341,6 +448,13 @@ func (m *ModerationServer) HandleSweep(ctx *gin.Context) {
 	var ratingsUpdated *int
 	if err := m.write.RPC("refresh_instructor_ratings", map[string]any{}, &ratingsUpdated); err != nil {
 		log.Printf("sweep: rating refresh failed: %v", err)
+		failures["rating_refresh"] = err.Error()
+	} else if ratingsUpdated == nil {
+		// A null where an integer was promised means the function did not
+		// return what this code expects, which is the same class of silent
+		// breakage as an outright error.
+		log.Printf("sweep: rating refresh returned no count")
+		failures["rating_refresh"] = "returned no count"
 	}
 
 	updated := 0
@@ -348,13 +462,20 @@ func (m *ModerationServer) HandleSweep(ctx *gin.Context) {
 		updated = *ratingsUpdated
 	}
 
-	ctx.JSON(http.StatusOK, gin.H{
+	body := gin.H{
+		"ok":               len(failures) == 0,
 		"triage_retried":   retried,
 		"triage_escalated": escalated,
 		"purged":           purged,
 		"emails_sent":      sent,
 		"ratings_updated":  updated,
-	})
+	}
+	if len(failures) > 0 {
+		body["failures"] = failures
+		ctx.JSON(http.StatusMultiStatus, body)
+		return
+	}
+	ctx.JSON(http.StatusOK, body)
 }
 
 /* ============================== public read ============================= */
@@ -364,6 +485,13 @@ func (m *ModerationServer) HandleSweep(ctx *gin.Context) {
 // Reads `public_reviews`, which is a view over approved rows that does not
 // expose the identity columns at all. The anon key has no grant on `reviews`
 // itself, so a mistake here cannot leak an unapproved review.
+// ReviewListArgs bounds the public review listing, matching the limits every
+// other read endpoint already enforces.
+type ReviewListArgs struct {
+	Limit  uint16 `form:"limit"  binding:"omitempty,min=1,max=500"`
+	Offset uint16 `form:"offset"`
+}
+
 func (client SupabaseClient) HandleListReviews(ctx *gin.Context) {
 	path := "v1/reviews"
 
@@ -373,12 +501,30 @@ func (client SupabaseClient) HandleListReviews(ctx *gin.Context) {
 		return
 	}
 
+	// Bound the pagination.
+	//
+	// These used to be forwarded to PostgREST as raw strings while every other
+	// read handler bound them into a uint16 capped at 500. On a public,
+	// unauthenticated endpoint that is both an unbounded query and an unbounded
+	// cache-key space: each distinct limit/offset pair mints a new LRU entry,
+	// so a caller could evict the whole 4096-entry cache at will.
+	var page ReviewListArgs
+	if err := ctx.ShouldBindQuery(&page); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"error": "limit must be between 1 and 500, and offset a non-negative integer",
+		})
+		return
+	}
+	if page.Limit == 0 {
+		page.Limit = 25
+	}
+
 	params := url.Values{}
 	params.Set("select", "*")
 	params.Set("instructor_slug", "eq."+slug)
 	params.Set("order", "submitted_at.desc")
-	params.Set("limit", ctx.DefaultQuery("limit", "25"))
-	params.Set("offset", ctx.DefaultQuery("offset", "0"))
+	params.Set("limit", strconv.FormatUint(uint64(page.Limit), 10))
+	params.Set("offset", strconv.FormatUint(uint64(page.Offset), 10))
 	if course := ctx.Query("courseCode"); course != "" {
 		params.Set("course_code", "eq."+strings.ToUpper(course))
 	}

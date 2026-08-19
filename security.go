@@ -71,15 +71,41 @@ func constantTimeEqual(a, b string) bool {
 /* ============================== middleware =============================== */
 
 // AdminAuth guards the full moderation surface.
+//
+// Sets two things on the context: `actor`, which is "human" or "ai" and drives
+// the shadow-mode gates, and `moderator`, which names who it was. With a single
+// shared key those were the same fact and `moderator` was always "human"; a
+// named key makes the audit trail able to answer "who approved this".
 func AdminAuth(cfg *Config) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
-		if cfg.AdminKey == "" || !constantTimeEqual(bearerToken(ctx), cfg.AdminKey) {
-			ctx.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		token := bearerToken(ctx)
+		if name, ok := moderatorFor(cfg, token); ok {
+			ctx.Set("actor", "human")
+			ctx.Set("moderator", name)
+			ctx.Next()
 			return
 		}
-		ctx.Set("actor", "human")
-		ctx.Next()
+		ctx.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 	}
+}
+
+// moderatorFor resolves a bearer token to the name recorded against its
+// decisions. Every comparison is constant time, and every configured key is
+// checked even after a match, so the time taken does not reveal which key
+// matched or how many are configured.
+func moderatorFor(cfg *Config, token string) (string, bool) {
+	name := ""
+	found := false
+
+	if cfg.AdminKey != "" && constantTimeEqual(token, cfg.AdminKey) {
+		name, found = "human", true
+	}
+	for moderator, key := range cfg.ModeratorKeys {
+		if key != "" && constantTimeEqual(token, key) {
+			name, found = moderator, true
+		}
+	}
+	return name, found
 }
 
 // ModerationAuth accepts either the admin key or the scoped triage callback
@@ -93,16 +119,19 @@ func AdminAuth(cfg *Config) gin.HandlerFunc {
 func ModerationAuth(cfg *Config) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		token := bearerToken(ctx)
-		switch {
-		case cfg.AdminKey != "" && constantTimeEqual(token, cfg.AdminKey):
+		if name, ok := moderatorFor(cfg, token); ok {
 			ctx.Set("actor", "human")
-		case cfg.TriageCallbackKey != "" && constantTimeEqual(token, cfg.TriageCallbackKey):
-			ctx.Set("actor", "ai")
-		default:
-			ctx.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+			ctx.Set("moderator", name)
+			ctx.Next()
 			return
 		}
-		ctx.Next()
+		if cfg.TriageCallbackKey != "" && constantTimeEqual(token, cfg.TriageCallbackKey) {
+			ctx.Set("actor", "ai")
+			ctx.Set("moderator", "ai")
+			ctx.Next()
+			return
+		}
+		ctx.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 	}
 }
 
@@ -217,12 +246,38 @@ func checkRateLimit(w *WriteClient, bucket string, limit RateLimit) (bool, error
 }
 
 // clientIP extracts the caller's address behind Cloud Run's proxy.
+//
+// Read from the RIGHT of X-Forwarded-For, never the left.
+//
+// This used to take the leftmost entry, which is the one value in the header
+// an attacker fully controls. Cloud Run preserves whatever X-Forwarded-For the
+// client sent and appends the address it observed, so `X-Forwarded-For: 1.2.3.4`
+// arrives as `1.2.3.4, <real client>` and the leftmost read returned "1.2.3.4".
+//
+// That is not a cosmetic difference. Three limiters key off this value --
+// submissions per IP, manage-key attempts, and reports -- and all three were
+// bypassable by varying one header per request. `submit_ip_hash` and the
+// request log recorded the attacker's chosen string too, so the forensics that
+// exist to investigate exactly this were being written by the person under
+// investigation.
+//
+// Reading from the right instead means the value can only have been written by
+// infrastructure we control: Cloud Run appends last, so the final entry is the
+// address it observed. trustedProxyHops exists for the case where a proxy is
+// added in front of it -- each additional hop appends one more entry, so the
+// address to trust moves one position left.
+const trustedProxyHops = 0
+
 func clientIP(ctx *gin.Context) string {
 	if forwarded := ctx.GetHeader("X-Forwarded-For"); forwarded != "" {
-		if first, _, found := strings.Cut(forwarded, ","); found {
-			return strings.TrimSpace(first)
+		parts := strings.Split(forwarded, ",")
+		idx := len(parts) - 1 - trustedProxyHops
+		if idx < 0 {
+			idx = 0
 		}
-		return strings.TrimSpace(forwarded)
+		if candidate := strings.TrimSpace(parts[idx]); candidate != "" {
+			return candidate
+		}
 	}
 	host, _, err := net.SplitHostPort(ctx.Request.RemoteAddr)
 	if err != nil {

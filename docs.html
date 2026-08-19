@@ -1357,7 +1357,7 @@
         <tr>
         <td style="text-align:left"><code>/v1/admin/sweep</code></td>
         <td style="text-align:left">POST</td>
-        <td style="text-align:left">Scheduled maintenance (admin key)</td>
+        <td style="text-align:left">Scheduled maintenance (admin key). Answers <code>200</code> when every step succeeded and <code>207</code> with a <code>failures</code> object when any did not — alert on non-<code>200</code>.</td>
         </tr>
         </tbody>
         </table>

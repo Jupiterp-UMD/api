@@ -486,3 +486,173 @@ func TestShadowModeReasonOmitsAbsentConfidence(t *testing.T) {
 		t.Errorf("reason %q does not name the decision", got)
 	}
 }
+
+/* ==================== X-Forwarded-For spoofing ========================== */
+
+// clientIP read the LEFTMOST X-Forwarded-For entry, which is the one value in
+// the header a caller fully controls: Cloud Run preserves what the client sent
+// and appends what it observed. Three limiters key off this -- submissions per
+// IP, manage-key attempts, and reports -- so a caller varying one header
+// bypassed all three, and wrote their chosen string into `submit_ip_hash` and
+// the request log at the same time.
+func TestClientIPIgnoresCallerSuppliedForwardedFor(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	cases := []struct {
+		name   string
+		header string
+		remote string
+		want   string
+	}{
+		{
+			name:   "spoofed entry ahead of the real one is ignored",
+			header: "1.2.3.4, 203.0.113.7",
+			remote: "10.0.0.1:5000",
+			want:   "203.0.113.7",
+		},
+		{
+			name:   "several spoofed entries change nothing",
+			header: "1.1.1.1, 2.2.2.2, 3.3.3.3, 203.0.113.7",
+			remote: "10.0.0.1:5000",
+			want:   "203.0.113.7",
+		},
+		{
+			name:   "a single entry is the platform's own",
+			header: "203.0.113.7",
+			remote: "10.0.0.1:5000",
+			want:   "203.0.113.7",
+		},
+		{
+			name:   "no header falls back to the socket",
+			header: "",
+			remote: "203.0.113.7:5000",
+			want:   "203.0.113.7",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, "/v1/reviews", nil)
+			req.RemoteAddr = tc.remote
+			if tc.header != "" {
+				req.Header.Set("X-Forwarded-For", tc.header)
+			}
+
+			ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+			ctx.Request = req
+
+			if got := clientIP(ctx); got != tc.want {
+				t.Fatalf("clientIP() = %q, want %q; a caller-supplied X-Forwarded-For "+
+					"must not be able to choose its own rate-limit bucket", got, tc.want)
+			}
+		})
+	}
+}
+
+// Two callers behind the same real address must land in the same bucket no
+// matter what they claim, which is the property the limiter actually needs.
+func TestClientIPIsStableAcrossSpoofedHeaders(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	ipFor := func(forwarded string) string {
+		req := httptest.NewRequest(http.MethodPost, "/v1/reviews", nil)
+		req.RemoteAddr = "10.0.0.1:5000"
+		req.Header.Set("X-Forwarded-For", forwarded)
+		ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+		ctx.Request = req
+		return clientIP(ctx)
+	}
+
+	first := ipFor("198.51.100.1, 203.0.113.7")
+	second := ipFor("198.51.100.99, 203.0.113.7")
+	if first != second {
+		t.Fatalf("same client resolved to %q and %q by varying the spoofed prefix", first, second)
+	}
+}
+
+/* ================== manage key survives the outbox ====================== */
+
+// The manage key was minted at submit, stashed in the verification email's
+// payload, and read back on verification. markSent clears that payload the
+// moment the mail is accepted -- and the reviewer cannot click a link in a mail
+// that has not been sent -- so the read always came back empty. Every reviewer
+// got `"manage_key": ""` and no way to withdraw, and the site's `{#if}` hid it.
+//
+// The fix mints the key during verification instead, so nothing has to survive
+// a round trip through a queue that is entitled to wipe itself.
+func TestManageKeyIsNotRecoveredFromClearedOutboxPayload(t *testing.T) {
+	// What markSent leaves behind.
+	sent := outboxRow{
+		Template: "verify",
+		Payload:  map[string]any{},
+	}
+	if key, _ := sent.Payload["manage_key"].(string); key != "" {
+		t.Fatal("a sent outbox row still carries manage_key; the payload is meant to be cleared")
+	}
+
+	// The verification email must not be the only copy of anything the flow
+	// needs afterwards. It carries the token, and nothing else load-bearing.
+	cfg := &Config{SiteBaseURL: "https://www.jupiterp.com"}
+	_, html, text := renderTemplate(cfg, outboxRow{
+		Template: "verify",
+		Payload: map[string]any{
+			"token":           "tok",
+			"instructor_name": "Shane Walsh",
+		},
+	})
+	for _, body := range []string{html, text} {
+		if strings.Contains(body, "manage_key") {
+			t.Fatal("verification email references manage_key; it is minted at verification now")
+		}
+	}
+}
+
+/* ================== named moderators in the audit trail ================= */
+
+// With one shared key, `decided_by` could only ever say "human" -- never which
+// human approved a review about a named professor or merged two identities.
+func TestModeratorForNamesTheKeyHolder(t *testing.T) {
+	cfg := &Config{
+		AdminKey: strings.Repeat("a", 32),
+		ModeratorKeys: map[string]string{
+			"alice": strings.Repeat("b", 32),
+			"bob":   strings.Repeat("c", 32),
+		},
+	}
+
+	if name, ok := moderatorFor(cfg, strings.Repeat("b", 32)); !ok || name != "alice" {
+		t.Fatalf("named key resolved to (%q, %v), want (\"alice\", true)", name, ok)
+	}
+	if name, ok := moderatorFor(cfg, strings.Repeat("c", 32)); !ok || name != "bob" {
+		t.Fatalf("named key resolved to (%q, %v), want (\"bob\", true)", name, ok)
+	}
+	// The shared key still works and is still recorded coarsely.
+	if name, ok := moderatorFor(cfg, strings.Repeat("a", 32)); !ok || name != "human" {
+		t.Fatalf("shared admin key resolved to (%q, %v), want (\"human\", true)", name, ok)
+	}
+	if _, ok := moderatorFor(cfg, strings.Repeat("z", 32)); ok {
+		t.Fatal("an unknown key was accepted")
+	}
+	if _, ok := moderatorFor(cfg, ""); ok {
+		t.Fatal("an empty bearer token was accepted")
+	}
+}
+
+// An empty configured key must never match an empty token: that would make a
+// deployment that forgot to set a key accept every unauthenticated request.
+func TestModeratorForRejectsEmptyConfiguredKeys(t *testing.T) {
+	cfg := &Config{AdminKey: "", ModeratorKeys: map[string]string{"ghost": ""}}
+	if _, ok := moderatorFor(cfg, ""); ok {
+		t.Fatal("empty token matched an empty configured key; the surface would be unauthenticated")
+	}
+}
+
+func TestParseModeratorKeysIgnoresMalformedEntries(t *testing.T) {
+	keys := parseModeratorKeys("alice:key-one, bob:key-two,,noseparator, :emptyname,carol:")
+	if len(keys) != 2 {
+		t.Fatalf("parsed %d keys (%v), want 2", len(keys), keys)
+	}
+	if keys["alice"] != "key-one" || keys["bob"] != "key-two" {
+		t.Fatalf("unexpected parse result: %v", keys)
+	}
+}

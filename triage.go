@@ -173,11 +173,24 @@ func (t *TriageClient) Dispatch(reviewID string) {
 
 	// Hard violations are refused without a model call. Cheap, deterministic,
 	// and not susceptible to being argued out of it by the text it is reading.
+	//
+	// Gated on PrefilterAutoReject rather than applied unconditionally. This
+	// path used to bypass the auto-reject gate entirely, which made "shadow
+	// mode is on, so nothing automated is applied" untrue: a review containing
+	// a URL was rejected outright with no human in the loop, while the config,
+	// the rollout runbook and shadowModeReason all said otherwise. The rule
+	// itself is sound; what was wrong was that it could not be turned off.
 	if checks.HardReject {
+		const prefilterReason = "Reviews cannot contain links, email addresses, or phone numbers."
 		t.record(reviewID, "reject", "rule", "prefilter", 1.0, checks.Flags,
-			"Contains contact details or links, which the content policy does not allow.", true)
-		t.apply(reviewID, "rejected", "prefilter",
-			"Reviews cannot contain links, email addresses, or phone numbers.")
+			"Contains contact details or links, which the content policy does not allow.", t.cfg.PrefilterAutoReject)
+		if t.cfg.PrefilterAutoReject {
+			t.apply(reviewID, "rejected", "prefilter", prefilterReason)
+			return
+		}
+		t.escalate(reviewID, checks.Flags,
+			"pre-filter would reject ("+strings.Join(checks.Flags, ", ")+
+				"); prefilter auto-reject is off, so a person decides")
 		return
 	}
 

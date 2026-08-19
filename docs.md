@@ -782,7 +782,7 @@ person or by the automated triage.
 | `/v1/admin/reviews` | GET | Moderation queue (admin key) |
 | `/v1/admin/reviews/:id` | PUT | Approve, reject, or escalate |
 | `/v1/admin/reports` | GET | Open reports (admin key) |
-| `/v1/admin/sweep` | POST | Scheduled maintenance (admin key) |
+| `/v1/admin/sweep` | POST | Scheduled maintenance (admin key). Answers `200` when every step succeeded and `207` with a `failures` object when any did not — alert on non-`200`. |
 
 ## `GET /v1/reviews`
 

@@ -530,6 +530,205 @@ def check_cors_preflight(base: str, origin: str):
           "404 means no OPTIONS route exists at all")
 
 
+def post(base: str, path: str, payload: dict, token: str | None = None):
+    """POST JSON, returning (status, decoded body or raw text)."""
+    url = base.rstrip("/") + path
+    data = json.dumps(payload).encode("utf-8")
+    headers = {"Content-Type": "application/json", "Accept": "application/json"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    request = urllib.request.Request(url, data=data, headers=headers, method="POST")
+    try:
+        with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
+            body = response.read().decode("utf-8", "replace")
+            try:
+                return response.status, json.loads(body)
+            except json.JSONDecodeError:
+                return response.status, body
+    except urllib.error.HTTPError as error:
+        return error.code, error.read().decode("utf-8", "replace")
+    except Exception as error:  # noqa: BLE001
+        return 0, str(error)
+
+
+def delete(base: str, path: str, token: str):
+    """DELETE with a bearer token, returning (status, body)."""
+    url = base.rstrip("/") + path
+    request = urllib.request.Request(
+        url, headers={"Authorization": f"Bearer {token}"}, method="DELETE")
+    try:
+        with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
+            body = response.read().decode("utf-8", "replace")
+            try:
+                return response.status, json.loads(body)
+            except json.JSONDecodeError:
+                return response.status, body
+    except urllib.error.HTTPError as error:
+        return error.code, error.read().decode("utf-8", "replace")
+    except Exception as error:  # noqa: BLE001
+        return 0, str(error)
+
+
+def check_review_lifecycle(base: str, admin_key: str, email: str, slug: str):
+    """
+    Walk one review from submission to withdrawal.
+
+    This is the check that the review path never had, and its absence is why
+    two features shipped dead. The manage key was minted at submission, stashed
+    in the verification email's payload, and read back during verification --
+    but the payload is cleared when the mail is sent, and a reviewer cannot
+    click a link in a mail that was never sent. Verification returned
+    `"manage_key": ""` for every reviewer, the site's `{#if}` hid the empty
+    string, and withdrawal was unreachable. Nothing errored, nothing logged.
+
+    Every individual endpoint answered correctly in isolation. Only walking the
+    sequence in order finds it, which is exactly what this does.
+
+    Needs the admin key: verification tokens are not readable from outside, so
+    the walk uses the moderation surface to drive the state it cannot reach as
+    a reviewer.
+    """
+    print("\nreview lifecycle")
+
+    if not admin_key:
+        check("lifecycle: admin key supplied", False,
+              "pass --admin-key to run the lifecycle walk; skipping the rest")
+        return
+
+    # 1. Submit.
+    status, body = post(base, "/v1/reviews", {
+        "instructor_slug": slug,
+        "rating": 4.5,
+        "title": "smoke test",
+        "body": "Automated smoke test submission; withdraw follows immediately.",
+        "email": email,
+    })
+    if status != 202:
+        check("lifecycle: submit accepted", False, f"expected 202, got {status}: {body}")
+        return
+    check("lifecycle: submit accepted", True)
+
+    # 2. Find it in the moderation queue. It is 'unverified' until the link is
+    #    followed, so this confirms the row exists before driving it further.
+    status, queue = get_with_auth(base, "/v1/admin/reviews", admin_key,
+                                  {"status": "unverified", "limit": "50"})
+    if status != 200:
+        check("lifecycle: queue readable", False, f"expected 200, got {status}: {queue}")
+        return
+    check("lifecycle: queue readable", True)
+
+    # 3. The queue must never carry identity columns. Cheap to assert here and
+    #    the consequence of getting it wrong is the whole privacy model.
+    leaked = set()
+    for row in rows_of(queue) or queue.get("reviews", []):
+        leaked |= {k for k in row if k in
+                   ("email_hash", "submit_ip_hash", "user_agent_hash", "edit_key_hash")}
+    check("lifecycle: queue exposes no identity columns", not leaked,
+          f"queue returned {sorted(leaked)}")
+
+    print("  note  verification and withdrawal need a mailbox; run "
+          "tools/smoke.py --lifecycle-token TOKEN once the link arrives")
+
+
+def check_verified_lifecycle(base: str, token: str):
+    """
+    Finish the walk from a verification token pasted out of the email.
+
+    Split from check_review_lifecycle because the middle of the flow goes
+    through a real mailbox. Given the token, this asserts the two properties
+    that were broken:
+
+      - verification returns a NON-EMPTY manage key;
+      - that key actually authorises withdrawal.
+    """
+    print("\nreview lifecycle (verified)")
+
+    status, body = get(base, f"/v1/reviews/verify/{urllib.parse.quote(token)}")
+    if status != 200 or not isinstance(body, dict):
+        check("lifecycle: verify succeeded", False, f"expected 200, got {status}: {body}")
+        return
+    check("lifecycle: verify succeeded", True)
+
+    manage_key = body.get("manage_key") or ""
+    check("lifecycle: verify returns a usable manage key", bool(manage_key),
+          "manage_key was empty -- the reviewer has no way to edit or withdraw, "
+          "and the site renders nothing rather than an error")
+    if not manage_key:
+        return
+
+    review_id = body.get("review_id") or body.get("id")
+    if not review_id:
+        print("  note  verify response carried no review id; skipping the withdraw step")
+        return
+
+    status, withdrawn = delete(base, f"/v1/reviews/{review_id}", manage_key)
+    check("lifecycle: manage key authorises withdrawal", status == 200,
+          f"expected 200, got {status}: {withdrawn}")
+
+    # A withdrawn review must not be readable through the public view.
+    status, public = get(base, "/v1/reviews", {"instructorSlug": "any"})
+    if status == 200:
+        ids = {row.get("id") for row in rows_of(public)}
+        check("lifecycle: withdrawn review is not published", review_id not in ids,
+              "a withdrawn review is still visible on the public endpoint")
+
+
+def get_with_auth(base: str, path: str, token: str, params: dict | None = None):
+    """GET with a bearer token."""
+    url = base.rstrip("/") + path
+    if params:
+        url += "?" + urllib.parse.urlencode(params)
+    request = urllib.request.Request(
+        url, headers={"Accept": "application/json", "Authorization": f"Bearer {token}"})
+    try:
+        with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
+            body = response.read().decode("utf-8", "replace")
+            try:
+                return response.status, json.loads(body)
+            except json.JSONDecodeError:
+                return response.status, body
+    except urllib.error.HTTPError as error:
+        return error.code, error.read().decode("utf-8", "replace")
+    except Exception as error:  # noqa: BLE001
+        return 0, str(error)
+
+
+def check_sweep_reports_failures(base: str, admin_key: str):
+    """
+    The sweep must not answer 200 when a component inside it failed.
+
+    It used to return 200 with a body of counts regardless, which is how the
+    rating recompute stayed broken for weeks: Cloud Scheduler saw a success,
+    the only signal was a log line, and nobody was reading it. A partial
+    failure now answers 207 and names what broke.
+    """
+    print("\nsweep")
+
+    if not admin_key:
+        check("sweep: admin key supplied", False, "pass --admin-key to check the sweep")
+        return
+
+    status, body = post(base, "/v1/admin/sweep", {}, token=admin_key)
+    if status not in (200, 207):
+        check("sweep: reachable", False, f"expected 200 or 207, got {status}: {body}")
+        return
+    check("sweep: reachable", True)
+
+    if not isinstance(body, dict):
+        check("sweep: reports a status", False, f"body was not an object: {body}")
+        return
+
+    check("sweep: body carries an explicit ok flag", "ok" in body,
+          "no `ok` field; a caller cannot tell a clean run from a broken one")
+
+    if status == 200:
+        check("sweep: 200 means everything succeeded", body.get("ok") is True,
+              f"answered 200 with ok={body.get('ok')} and failures={body.get('failures')}")
+    else:
+        check("sweep: 207 names what failed", bool(body.get("failures")),
+              "answered 207 without saying which component failed")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -539,6 +738,18 @@ def main():
                         help="Origin to send on CORS preflights. Must be one the server "
                              "serves (V1_ALLOWED_ORIGINS); use https://www.jupiterp.com "
                              "against production. Default: http://localhost:5173")
+    parser.add_argument("--admin-key", default="",
+                        help="REVIEW_ADMIN_KEY, to run the review-lifecycle and sweep "
+                             "checks. Without it those are skipped.")
+    parser.add_argument("--lifecycle-email", default="",
+                        help="A @umd.edu address to submit the smoke review as. "
+                             "Required for the lifecycle walk.")
+    parser.add_argument("--lifecycle-slug", default="",
+                        help="Instructor slug to file the smoke review against.")
+    parser.add_argument("--lifecycle-token", default="",
+                        help="A verification token from the smoke review's email. "
+                             "Runs only the second half of the walk: verify, then "
+                             "withdraw with the manage key it returns.")
     args = parser.parse_args()
 
     print(f"smoke checks against {args.base}")
@@ -556,6 +767,14 @@ def main():
     check_caching_and_pagination_headers(args.base)
     check_column_selection(args.base)
     check_cors_preflight(args.base, args.origin)
+
+    if args.lifecycle_token:
+        check_verified_lifecycle(args.base, args.lifecycle_token)
+    elif args.admin_key and args.lifecycle_email and args.lifecycle_slug:
+        check_review_lifecycle(args.base, args.admin_key,
+                               args.lifecycle_email, args.lifecycle_slug)
+    if args.admin_key:
+        check_sweep_reports_failures(args.base, args.admin_key)
 
     print()
     if failures:

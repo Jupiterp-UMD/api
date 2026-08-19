@@ -211,8 +211,18 @@ func (s *ReviewServer) HandleSubmit(ctx *gin.Context) {
 	}
 
 	// Per-instructor limit, which is the one that catches brigading.
+	//
+	// Fails closed, like the two above. It used to swallow the error and let
+	// the request through, which disabled the anti-brigading control precisely
+	// when the database was struggling -- the moment a brigade is most likely
+	// to be what is causing the load.
 	within, err := checkRateLimit(s.write, fmt.Sprintf("instructor:%d", instructor.ID), limitPerInstructor)
-	if err == nil && !within {
+	if err != nil {
+		log.Printf("per-instructor rate limit check failed for instructor %d: %v", instructor.ID, err)
+		ctx.JSON(http.StatusServiceUnavailable, gin.H{"error": "try again shortly"})
+		return
+	}
+	if !within {
 		log.Printf("per-instructor rate limit hit for instructor %d", instructor.ID)
 		ctx.JSON(http.StatusTooManyRequests, gin.H{"error": "too many reviews for this professor right now"})
 		return
@@ -264,7 +274,11 @@ func (s *ReviewServer) HandleSubmit(ctx *gin.Context) {
 		sendInternalError(ctx, "v1/reviews", err)
 		return
 	}
-	manageKey, err := newToken()
+	// A placeholder, because `edit_key_hash` is NOT NULL and there is nothing
+	// to put there yet. The key the reviewer actually receives is minted in
+	// HandleVerify and overwrites this. Random rather than a constant so that
+	// an unverified row never shares a hash with any other.
+	placeholderKey, err := newToken()
 	if err != nil {
 		sendInternalError(ctx, "v1/reviews", err)
 		return
@@ -275,7 +289,7 @@ func (s *ReviewServer) HandleSubmit(ctx *gin.Context) {
 		"rating":          *req.Rating,
 		"email_hash":      emailHash,
 		"email_domain":    domain,
-		"edit_key_hash":   hashToken(manageKey),
+		"edit_key_hash":   hashToken(placeholderKey),
 		"submit_ip_hash":  hashOpaque(ip, s.cfg.EmailPepper),
 		"user_agent_hash": hashOpaque(ctx.GetHeader("User-Agent"), s.cfg.EmailPepper),
 		"status":          "unverified",
@@ -325,12 +339,13 @@ func (s *ReviewServer) HandleSubmit(ctx *gin.Context) {
 		log.Printf("verification token insert failed for review %s: %v", review.ID, err)
 	}
 
-	// Stored so the manage key can be emailed on verification without being
-	// held in memory between two requests.
+	// The recipient stored on this row is what makes the reviewer contactable
+	// later -- for their manage key on verification, and for a rejection
+	// notice with an appeal route. It is purged by PurgeContact once the
+	// review reaches a state that generates no further mail.
 	if err := s.email.Queue(review.ID, email, "verify", map[string]any{
 		"token":           verifyToken,
 		"instructor_name": instructor.Name,
-		"manage_key":      manageKey,
 	}); err != nil {
 		log.Printf("queueing verification email failed for review %s: %v", review.ID, err)
 	}
@@ -405,8 +420,18 @@ func (s *ReviewServer) HandleVerify(ctx *gin.Context) {
 	}
 	found := tokens[0]
 
+	// An unparseable expiry is treated as expired, not as "no expiry".
+	//
+	// The previous `err == nil &&` guard meant a format the parser did not
+	// recognise silently disabled the 48-hour window the email promises. If
+	// this ever fires it means PostgREST changed its timestamp rendering,
+	// which is worth a log line rather than a silently immortal token.
 	expires, err := time.Parse(time.RFC3339, found.ExpiresAt)
-	if err == nil && time.Now().After(expires) && found.UsedAt == nil {
+	if err != nil {
+		log.Printf("verify: unparseable expires_at %q on token for review %s: %v",
+			found.ExpiresAt, found.ReviewID, err)
+	}
+	if (err != nil || time.Now().After(expires)) && found.UsedAt == nil {
 		ctx.JSON(http.StatusGone, gin.H{
 			"error": "that link has expired; submit the review again to get a new one",
 		})
@@ -433,10 +458,30 @@ func (s *ReviewServer) HandleVerify(ctx *gin.Context) {
 		return
 	}
 
+	// Mint the manage key here, not at submit.
+	//
+	// It used to be minted during submission and stashed in the verification
+	// email's payload so this handler could read it back. That could never
+	// work: the payload is cleared when the mail is sent, and the reviewer
+	// cannot click a link in a mail that has not been sent. The key came back
+	// empty every time.
+	//
+	// Minting it at the moment it is first needed removes the round trip
+	// through the queue entirely. The column is overwritten rather than
+	// filled because `edit_key_hash` is NOT NULL and submission has to put
+	// something there; that placeholder is never delivered to anyone and is
+	// superseded here.
+	manageKey, err := newToken()
+	if err != nil {
+		sendInternalError(ctx, "v1/reviews/verify", err)
+		return
+	}
+
 	now := time.Now().UTC().Format(time.RFC3339)
 	if err := s.write.Update("reviews", eq("id", review.ID), map[string]any{
-		"status":      "pending",
-		"verified_at": now,
+		"status":        "pending",
+		"verified_at":   now,
+		"edit_key_hash": hashToken(manageKey),
 	}, nil); err != nil {
 		sendInternalError(ctx, "v1/reviews/verify", err)
 		return
@@ -451,7 +496,7 @@ func (s *ReviewServer) HandleVerify(ctx *gin.Context) {
 	// unrecoverable -- there is deliberately no way to link it back to a
 	// person -- so emailing it too is the difference between a usable feature
 	// and a support burden.
-	manageKey := s.deliverManageKey(review.ID)
+	s.emailManageKey(review.ID, review.InstructorID, manageKey)
 
 	// Fire-and-forget: the reviewer's request completes as soon as the status
 	// flips. They are never made to wait on n8n or on a model.
@@ -464,34 +509,32 @@ func (s *ReviewServer) HandleVerify(ctx *gin.Context) {
 	})
 }
 
-// deliverManageKey pulls the key stashed on the queued verification email and
-// sends it on. Returns "" when it cannot be recovered.
-func (s *ReviewServer) deliverManageKey(reviewID string) string {
-	params := url.Values{}
-	params.Set("select", "*")
-	params.Set("review_id", "eq."+reviewID)
-	params.Set("template", "eq.verify")
-	params.Set("limit", "1")
+// emailManageKey sends the reviewer a copy of the key just minted for them.
+//
+// Best effort: the key is already in the HTTP response, so a mail failure
+// costs the reviewer their backup copy rather than the feature. The instructor
+// name is looked up rather than read off the queue, so this does not depend on
+// payload that the outbox is entitled to clear.
+func (s *ReviewServer) emailManageKey(reviewID string, instructorID int64, manageKey string) {
+	recipient := s.email.RecipientFor(reviewID)
+	if recipient == "" {
+		return
+	}
 
-	var rows []outboxRow
-	if err := s.write.Select("email_outbox", params, &rows); err != nil || len(rows) == 0 {
-		return ""
+	name := ""
+	var instructors []instructorRow
+	if err := s.write.Select("instructors", eqSelect("id", fmt.Sprintf("%d", instructorID)), &instructors); err == nil && len(instructors) > 0 {
+		name = instructors[0].Name
 	}
-	key, _ := rows[0].Payload["manage_key"].(string)
-	name, _ := rows[0].Payload["instructor_name"].(string)
-	if key == "" {
-		return ""
+
+	if err := s.email.Queue(reviewID, recipient, "manage_key", map[string]any{
+		"manage_key":      manageKey,
+		"instructor_name": name,
+	}); err != nil {
+		log.Printf("queueing manage key email failed for review %s: %v", reviewID, err)
+		return
 	}
-	if rows[0].Recipient != nil && *rows[0].Recipient != "" {
-		if err := s.email.Queue(reviewID, *rows[0].Recipient, "manage_key", map[string]any{
-			"manage_key":      key,
-			"instructor_name": name,
-		}); err != nil {
-			log.Printf("queueing manage key email failed: %v", err)
-		}
-		go func() { _, _ = s.email.Flush(5) }()
-	}
-	return key
+	go func() { _, _ = s.email.Flush(5) }()
 }
 
 /* ============================== manage ================================== */
@@ -508,9 +551,17 @@ func (s *ReviewServer) authorizeManage(ctx *gin.Context) (*reviewRow, bool) {
 		return nil, false
 	}
 
+	// Fails closed: this limiter is the brute-force guard on a bearer key, so
+	// letting requests through when it errors removes the control at exactly
+	// the wrong moment.
 	within, err := checkRateLimit(s.write,
 		"manage:"+hashOpaque(clientIP(ctx), s.cfg.EmailPepper), limitPerManageKey)
-	if err == nil && !within {
+	if err != nil {
+		log.Printf("manage-key rate limit check failed: %v", err)
+		ctx.JSON(http.StatusServiceUnavailable, gin.H{"error": "try again shortly"})
+		return nil, false
+	}
+	if !within {
 		ctx.JSON(http.StatusTooManyRequests, gin.H{"error": "too many attempts"})
 		return nil, false
 	}
@@ -558,6 +609,11 @@ func (s *ReviewServer) HandleWithdraw(ctx *gin.Context) {
 		sendInternalError(ctx, "v1/reviews/:id", err)
 		return
 	}
+
+	// Terminal, and the one status where a leftover address would be most
+	// clearly wrong: the reviewer has just asked to be removed.
+	s.email.PurgeContact(review.ID)
+
 	ctx.JSON(http.StatusOK, gin.H{"status": "withdrawn"})
 }
 
@@ -584,7 +640,12 @@ func (s *ReviewServer) HandleReport(ctx *gin.Context) {
 	within, err := checkRateLimit(s.write,
 		"report:"+hashOpaque(clientIP(ctx), s.cfg.EmailPepper),
 		RateLimit{Action: "report", Window: time.Hour, Max: 10})
-	if err == nil && !within {
+	if err != nil {
+		log.Printf("report rate limit check failed: %v", err)
+		ctx.JSON(http.StatusServiceUnavailable, gin.H{"error": "try again shortly"})
+		return
+	}
+	if !within {
 		ctx.JSON(http.StatusTooManyRequests, gin.H{"error": "too many reports"})
 		return
 	}

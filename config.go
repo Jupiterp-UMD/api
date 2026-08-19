@@ -21,9 +21,20 @@ type Config struct {
 	Port        string
 
 	// Write path. Empty ServiceKey disables /v1 entirely.
-	ServiceKey     string
-	EmailPepper    string
-	AdminKey       string
+	ServiceKey  string
+	EmailPepper string
+	AdminKey    string
+	// Named moderator keys, as "alice:key1,bob:key2".
+	//
+	// The audit trail records `decided_by` for every decision, but with one
+	// shared key that field could only ever say "human" -- it could not say
+	// which human approved a review about a named professor, or which one
+	// merged two identities irreversibly. That is the question an audit trail
+	// exists to answer.
+	//
+	// Optional and additive: REVIEW_ADMIN_KEY keeps working unchanged and is
+	// recorded as "human", so nothing breaks by not setting this.
+	ModeratorKeys  map[string]string
 	TurnstileKey   string
 	BrevoAPIKey    string
 	EmailFrom      string
@@ -57,16 +68,14 @@ type Config struct {
 	AutoApproveMinConf float64
 	AutoRejectMinConf  float64
 
-	// If true, a submission is accepted without email verification when the
-	// mail provider's daily cap is exhausted.
+	// If true, the deterministic pre-filter may reject a review outright --
+	// links, email addresses, phone numbers -- with no human in the loop.
 	//
-	// OFF by default, and it should stay off. Turning it on makes exhausting
-	// the cap a way to bypass verification, and verification is what backs the
-	// "real UMD student" claim, the per-email dedupe, and most of the abuse
-	// defences. The queue in email_outbox already prevents losing reviews when
-	// the cap is hit -- it defers the send instead of dropping it -- which is
-	// the actual problem this would otherwise be solving.
-	AllowUnverifiedOnEmailCap bool
+	// Separate from AutoReject, which gates the classifier. This gates a rule,
+	// and a rule is worth trusting further than a model: it does not vary and
+	// cannot be argued out of its conclusion by the text it is reading. It is
+	// still a switch, so that "shadow mode" can mean what it says.
+	PrefilterAutoReject bool
 }
 
 func LoadConfig() *Config {
@@ -78,6 +87,7 @@ func LoadConfig() *Config {
 		ServiceKey:    os.Getenv("DATABASE_SERVICE_KEY"),
 		EmailPepper:   os.Getenv("REVIEW_EMAIL_PEPPER"),
 		AdminKey:      os.Getenv("REVIEW_ADMIN_KEY"),
+		ModeratorKeys: parseModeratorKeys(os.Getenv("REVIEW_MODERATOR_KEYS")),
 		TurnstileKey:  os.Getenv("TURNSTILE_SECRET_KEY"),
 		BrevoAPIKey:   os.Getenv("BREVO_API_KEY"),
 		EmailFrom:     os.Getenv("EMAIL_FROM_ADDRESS"),
@@ -105,7 +115,7 @@ func LoadConfig() *Config {
 		AutoApproveMinConf: envFloat("REVIEW_TRIAGE_AUTO_APPROVE_MIN_CONFIDENCE", 0.90),
 		AutoRejectMinConf:  envFloat("REVIEW_TRIAGE_AUTO_REJECT_MIN_CONFIDENCE", 0.85),
 
-		AllowUnverifiedOnEmailCap: envBool("REVIEW_ALLOW_UNVERIFIED_ON_EMAIL_CAP", false),
+		PrefilterAutoReject: envBool("REVIEW_TRIAGE_PREFILTER_AUTO_REJECT", false),
 	}
 	return c
 }
@@ -135,6 +145,18 @@ func (c *Config) Validate() {
 	if len(c.AdminKey) > 0 && len(c.AdminKey) < 32 {
 		fatal = append(fatal, "REVIEW_ADMIN_KEY is shorter than 32 characters; it is the only "+
 			"thing standing in front of the moderation surface")
+	}
+	for name, key := range c.ModeratorKeys {
+		if len(key) < 32 {
+			fatal = append(fatal, "moderator key for "+name+" is shorter than 32 characters")
+		}
+		if key == c.AdminKey {
+			fatal = append(fatal, "moderator key for "+name+" duplicates REVIEW_ADMIN_KEY, "+
+				"so its decisions would be indistinguishable from the shared key's")
+		}
+		if key == c.TriageCallbackKey {
+			fatal = append(fatal, "moderator key for "+name+" duplicates REVIEW_TRIAGE_CALLBACK_KEY")
+		}
 	}
 
 	// The single most important ordering constraint in the triage design.
@@ -186,14 +208,40 @@ func (c *Config) Validate() {
 	if c.TriageWebhookURL == "" {
 		log.Printf("Automated triage is off; every verified review goes to the human queue")
 	}
-	if c.AllowUnverifiedOnEmailCap {
-		log.Printf("WARNING: REVIEW_ALLOW_UNVERIFIED_ON_EMAIL_CAP is on. Exhausting the mail " +
-			"provider's daily cap now bypasses email verification, which is what backs the " +
-			"per-email dedupe and the UMD-affiliation check.")
+	if c.PrefilterAutoReject {
+		log.Printf("Pre-filter auto-reject is ENABLED: reviews containing links, email " +
+			"addresses or phone numbers are refused without a human decision")
+	} else {
+		log.Printf("Pre-filter auto-reject is off; pre-filter hits are escalated to the human queue")
 	}
 	if c.AutoApprove {
 		log.Printf("Auto-approve is ENABLED above confidence %.2f with zero flags", c.AutoApproveMinConf)
 	}
+}
+
+// parseModeratorKeys reads "alice:key1,bob:key2" into a name-to-key map.
+//
+// Malformed entries are dropped with a warning rather than failing the boot:
+// a typo in one moderator's entry should not take the service down for
+// everyone. An entry that is dropped simply cannot sign in, which is visible
+// immediately to the person it belongs to.
+func parseModeratorKeys(raw string) map[string]string {
+	keys := map[string]string{}
+	for _, entry := range strings.Split(raw, ",") {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			continue
+		}
+		name, key, found := strings.Cut(entry, ":")
+		name = strings.TrimSpace(name)
+		key = strings.TrimSpace(key)
+		if !found || name == "" || key == "" {
+			log.Printf("WARNING: ignoring malformed REVIEW_MODERATOR_KEYS entry %q; expected name:key", entry)
+			continue
+		}
+		keys[name] = key
+	}
+	return keys
 }
 
 func mustEnv(key string) string {

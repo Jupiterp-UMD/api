@@ -179,15 +179,64 @@ func (e *EmailSender) deliver(row outboxRow) error {
 }
 
 func (e *EmailSender) markSent(row outboxRow) error {
-	// The recipient address is dropped once it is no longer needed. Holding
-	// raw addresses in a queue table would quietly undo the decision not to
-	// store them on `reviews`.
+	// The payload is dropped: it carries the verification token, which is a
+	// bearer credential and has no reason to outlive the send.
+	//
+	// The recipient is NOT dropped here, which is a deliberate reversal.
+	// Nulling it on send made two features unreachable rather than private:
+	// a review can only be verified, and can only be rejected, *after* its
+	// verification mail has gone out -- so by the time either of those needed
+	// an address, this function had already destroyed the only copy. The
+	// manage key was returned as "" on every verification and no rejection
+	// mail was ever sent, both silently.
+	//
+	// The address is instead purged by PurgeContact when the review reaches a
+	// state that will never generate mail again. That keeps the retention
+	// bounded by the review's own lifecycle, which is what the privacy policy
+	// actually describes, rather than by an implementation detail of the queue.
 	return e.write.Update("email_outbox", eq("id", fmt.Sprintf("%d", row.ID)), map[string]any{
-		"status":    "sent",
-		"sent_at":   time.Now().UTC().Format(time.RFC3339),
+		"status":  "sent",
+		"sent_at": time.Now().UTC().Format(time.RFC3339),
+		"payload": map[string]any{},
+	}, nil)
+}
+
+// RecipientFor recovers the address a review's mail was sent to.
+//
+// Returns "" once PurgeContact has run, which is the normal state for any
+// review that has reached a terminal status. Callers must treat that as
+// "no longer contactable" rather than as an error.
+func (e *EmailSender) RecipientFor(reviewID string) string {
+	params := url.Values{}
+	params.Set("select", "recipient")
+	params.Set("review_id", "eq."+reviewID)
+	params.Set("recipient", "not.is.null")
+	params.Set("order", "id.asc")
+	params.Set("limit", "1")
+
+	var rows []outboxRow
+	if err := e.write.Select("email_outbox", params, &rows); err != nil || len(rows) == 0 {
+		return ""
+	}
+	if rows[0].Recipient == nil {
+		return ""
+	}
+	return *rows[0].Recipient
+}
+
+// PurgeContact drops every stored address for a review.
+//
+// Called when the review reaches a state that generates no further mail:
+// approved, rejected-and-notified, or withdrawn. This is the retention
+// boundary -- after it, the service holds no way to contact the reviewer and
+// no way to link the review back to a person.
+func (e *EmailSender) PurgeContact(reviewID string) {
+	if err := e.write.Update("email_outbox", eq("review_id", reviewID), map[string]any{
 		"recipient": nil,
 		"payload":   map[string]any{},
-	}, nil)
+	}, nil); err != nil {
+		log.Printf("purging contact for review %s failed: %v", reviewID, err)
+	}
 }
 
 func (e *EmailSender) reschedule(row outboxRow, reason string) error {
