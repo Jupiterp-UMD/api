@@ -195,7 +195,7 @@ func (m *ModerationServer) HandleDecide(ctx *gin.Context) {
 		m.setStatus(reviewID, "escalated", decidedBy, "")
 		m.triage.notifyDiscord(reviewID, req.Action,
 			derefFloat(req.Confidence), req.Categories,
-			"shadow mode: recorded but not applied")
+			shadowModeReason(req.Action, req.Confidence))
 		ctx.JSON(http.StatusOK, gin.H{
 			"status":  "escalated",
 			"applied": false,
@@ -402,6 +402,27 @@ func (client SupabaseClient) HandleListReviews(ctx *gin.Context) {
 	// appear on one refresh and vanish on the next depending on which instance
 	// answered.
 	client.writeAndCacheResponse(ctx, res, path, key, reviewsTTL)
+}
+
+// shadowModeReason explains, in the alert itself, why a decision was made and
+// then not acted on.
+//
+// This used to read "shadow mode: recorded but not applied", which is accurate
+// and tells a reader nothing: it names the mechanism without saying what the
+// classifier concluded or what the reader is expected to do. Someone seeing it
+// in a channel cannot tell whether something went wrong.
+//
+// Confidence is omitted rather than printed as 0.00 when the caller did not
+// supply one -- a decision with no confidence is different from one the model
+// was certain was worthless, and the two should not look alike.
+func shadowModeReason(action string, confidence *float64) string {
+	if confidence == nil {
+		return fmt.Sprintf(
+			"classifier said %s — shadow mode is on, so it was not applied", action)
+	}
+	return fmt.Sprintf(
+		"classifier said %s (%.2f) — shadow mode is on, so it was not applied",
+		action, *confidence)
 }
 
 func derefFloat(f *float64) float64 {

@@ -450,3 +450,39 @@ func TestReadCORSExposesContentRange(t *testing.T) {
 		t.Error("Content-Range was not sent at all")
 	}
 }
+
+/* ======================= shadow-mode alert wording ====================== */
+
+// The shadow-mode Discord alert has to say what the classifier concluded.
+//
+// It used to read "shadow mode: recorded but not applied" -- accurate, and
+// useless to the person reading it in a channel. It named the mechanism without
+// saying what the decision was or that nothing had gone wrong, so every alert
+// needed someone to already know how the pipeline works to interpret it.
+func TestShadowModeReasonStatesTheDecision(t *testing.T) {
+	confidence := 0.99
+	got := shadowModeReason("approve", &confidence)
+
+	for _, want := range []string{"classifier said approve", "0.99", "shadow mode", "not applied"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("reason %q is missing %q", got, want)
+		}
+	}
+	if strings.Contains(got, "recorded but not applied") && !strings.Contains(got, "classifier") {
+		t.Error("reverted to naming the mechanism without naming the decision")
+	}
+}
+
+// A decision with no confidence must not be reported as 0.00 confidence. The
+// two mean opposite things: "the model did not say" versus "the model was
+// certain this was worthless".
+func TestShadowModeReasonOmitsAbsentConfidence(t *testing.T) {
+	got := shadowModeReason("reject", nil)
+
+	if strings.Contains(got, "0.00") || strings.Contains(got, "(") {
+		t.Errorf("reason %q printed a confidence that was never supplied", got)
+	}
+	if !strings.Contains(got, "classifier said reject") {
+		t.Errorf("reason %q does not name the decision", got)
+	}
+}
