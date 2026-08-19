@@ -110,23 +110,39 @@ func main() {
 	// Registered once and mounted twice so the two prefixes cannot drift. A new
 	// endpoint added here appears on both; adding it to one group by hand is
 	// how a version alias quietly becomes a version fork.
+	//
+	// Each route registers its own OPTIONS alongside its GET.
+	//
+	// Without one, a preflight for a read path fell through to the write
+	// group's catch-all `OPTIONS /v1/*path` and was answered by the *write*
+	// CORS policy -- so `OPTIONS /v1/courses` from a third-party origin got a
+	// 403 while the GET behind it was open to everyone, and `/v0` had no
+	// OPTIONS handler at all and answered 404. Simple GETs are unaffected,
+	// which is why nothing caught this: only a caller that sends a header
+	// forcing a preflight ever sees it, and that caller is a third party
+	// rather than this site.
 	registerReadRoutes := func(g *gin.RouterGroup) {
-		g.GET("/", client.handleBaseEndpoint) // base endpoint
+		get := func(path string, handler gin.HandlerFunc) {
+			g.GET(path, handler)
+			g.OPTIONS(path, handlePreflight)
+		}
 
-		g.GET("/courses", client.handleGetCourses)                       // full courses
-		g.GET("/courses/minified", client.handleMinifiedCourses)         // minified courses
-		g.GET("/courses/withSections", client.handleCoursesWithSections) // courses with sections
+		get("/", client.handleBaseEndpoint) // base endpoint
 
-		g.GET("/deptList", client.handleGetDepartments) // list of all 4-letter department codes
+		get("/courses", client.handleGetCourses)                       // full courses
+		get("/courses/minified", client.handleMinifiedCourses)         // minified courses
+		get("/courses/withSections", client.handleCoursesWithSections) // courses with sections
 
-		g.GET("/sections", client.handleGetSections) // sections for courses
+		get("/deptList", client.handleGetDepartments) // list of all 4-letter department codes
 
-		g.GET("/instructors", client.handleGetInstructors)              // all instructors with ratings
-		g.GET("/instructors/active", client.handleGetActiveInstructors) // all instructors currently teaching
+		get("/sections", client.handleGetSections) // sections for courses
 
-		g.GET("/grades", client.handleGetGrades)               // section-level grade distributions
-		g.GET("/grades/summary", client.handleGetGradeSummary) // grades aggregated by course, term, or instructor
-		g.GET("/grades/terms", client.handleGetGradeTerms)     // terms for which grade data exists
+		get("/instructors", client.handleGetInstructors)              // all instructors with ratings
+		get("/instructors/active", client.handleGetActiveInstructors) // all instructors currently teaching
+
+		get("/grades", client.handleGetGrades)               // section-level grade distributions
+		get("/grades/summary", client.handleGetGradeSummary) // grades aggregated by course, term, or instructor
+		get("/grades/terms", client.handleGetGradeTerms)     // terms for which grade data exists
 	}
 
 	// Deliberately outside the `cfg.WriteEnabled()` block below. The write
@@ -174,7 +190,7 @@ func main() {
 			MaxAge:           12 * time.Hour,
 		}))
 
-		// Answer CORS preflight.
+		// Answer CORS preflight, per path.
 		//
 		// Gin routes by method, and group middleware only runs once a route in
 		// that group matches. With no OPTIONS handler registered, an OPTIONS
@@ -191,9 +207,21 @@ func main() {
 		// The handler body is never reached for an allowed origin -- the CORS
 		// middleware aborts with 204 first -- but registering the route is what
 		// puts the middleware in the chain at all.
-		v1.OPTIONS("/*path", func(ctx *gin.Context) {
-			ctx.Status(http.StatusNoContent)
-		})
+		//
+		// Listed rather than a catch-all. `OPTIONS /*path` swallowed the read
+		// preflights on this same prefix and answered them with the write
+		// origin allowlist; gin also refuses a catch-all once a static sibling
+		// exists, which the read routes above now are. Enumerating is the
+		// honest form anyway -- a write route is not reachable from a browser
+		// until it appears here, and that is worth being visible.
+		for _, path := range []string{
+			"/reviews",
+			"/reviews/verify/:token",
+			"/reviews/:id",
+			"/reviews/:id/report",
+		} {
+			v1.OPTIONS(path, handlePreflight)
+		}
 
 		// Public reads of approved reviews. Served from public_reviews, which
 		// cannot expose an unapproved row or an identity column.
@@ -221,12 +249,36 @@ func main() {
 		admin.GET("/instructors/search", AdminAuth(cfg), moderationServer.HandleInstructorSearch)
 		admin.POST("/instructors/queue/:id", AdminAuth(cfg), moderationServer.HandleInstructorMatch)
 
+		// Every admin route carries an Authorization header, so every admin
+		// request from a browser is preflighted. The moderation queue is used
+		// from a browser.
+		for _, path := range []string{
+			"/reviews",
+			"/reviews/:id",
+			"/reports",
+			"/sweep",
+			"/instructors/queue",
+			"/instructors/queue/:id",
+			"/instructors/search",
+		} {
+			admin.OPTIONS(path, handlePreflight)
+		}
+
 		log.Printf("v1 write path enabled for origins %v", cfg.AllowedOrigins)
 	}
 
 	// Listen and serve on defined port
 	log.Printf("Listening on port %s", cfg.Port)
 	r.Run(":" + cfg.Port)
+}
+
+// handlePreflight terminates a CORS preflight.
+//
+// Reached only when the request survives the group's CORS middleware, which
+// aborts with 204 for an allowed origin and 403 for a disallowed one. Its job
+// is to make the route exist so that middleware runs at all.
+func handlePreflight(ctx *gin.Context) {
+	ctx.Status(http.StatusNoContent)
 }
 
 // requestLogger emits one structured line per request.

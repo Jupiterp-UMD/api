@@ -104,7 +104,11 @@ type MatchDecisionRequest struct {
 	Action string `json:"action" binding:"required,oneof=link create dismiss"`
 	// Required for `link`.
 	InstructorID *int64 `json:"instructor_id"`
-	// Who decided. Recorded on the queue row and on the alias.
+	// A note about who decided, for a caller that knows something the key does
+	// not -- a shared key operated by a named person, say.
+	//
+	// NOT the audit identity. That comes from the key that authenticated the
+	// request; see HandleInstructorMatch.
 	Actor string `json:"actor"`
 }
 
@@ -125,13 +129,29 @@ func (m *ModerationServer) HandleInstructorMatch(ctx *gin.Context) {
 		return
 	}
 
-	// Falls back to a generic actor rather than rejecting the request: the
-	// point of recording one is telling human decisions from automated ones,
-	// and "some moderator" carries that distinction. The SQL refuses the
-	// reserved machine actors outright.
-	actor := strings.TrimSpace(req.Actor)
+	// The actor is whoever the key says, not whoever the body says.
+	//
+	// This used to take `req.Actor` straight from the request, and the admin
+	// page hardcodes `actor: 'moderator'` -- so every merge was recorded as
+	// "moderator" no matter which key made it, while `ctx.GetString("moderator")`,
+	// already resolved by AdminAuth from the key that authenticated, went
+	// unread. That is precisely the capability REVIEW_MODERATOR_KEYS exists to
+	// provide, on the one operation where it matters most: merging two
+	// instructor identities cannot be undone from the merged state, and "who
+	// did this" is the first question anyone will ask about it.
+	//
+	// A client-supplied note is still accepted, but only alongside the
+	// authenticated name -- it can add detail, never replace the identity.
+	actor := ctx.GetString("moderator")
 	if actor == "" {
+		// Only reachable if the auth middleware is ever changed to not set it.
+		// Falls back to a generic label rather than rejecting, because the SQL
+		// refuses the reserved machine actors outright and a human decision
+		// recorded coarsely still tells human from automated.
 		actor = "moderator"
+	}
+	if note := strings.TrimSpace(req.Actor); note != "" && note != actor {
+		actor = actor + " (" + note + ")"
 	}
 
 	args := map[string]any{

@@ -130,10 +130,16 @@ func (s SupabaseClient) getSections(args SectionsArgs) (*http.Response, error) {
 	// SORT BY `args.SortBy`
 	params := url.Values{}
 	params.Set("select", "*")
+	// `else if`, and the handler rejects the combination.
+	//
+	// These were two independent `if` blocks writing the same key, so a request
+	// naming both `courseCodes` and `prefix` had its course codes silently
+	// overwritten by the prefix and got back every section in the department.
+	// Every other endpoint here refuses that combination rather than picking
+	// one; this one answered 200 with the wrong rows.
 	if args.CourseCodes != "" {
 		params.Set("course_code", fmt.Sprintf("in.(%s)", args.CourseCodes))
-	}
-	if args.CoursePrefix != "" {
+	} else if args.CoursePrefix != "" {
 		params.Set("course_code", fmt.Sprintf("like.%s*", args.CoursePrefix))
 	}
 	params.Set("offset", fmt.Sprintf("%d", args.Offset))

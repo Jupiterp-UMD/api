@@ -7,6 +7,8 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -106,24 +108,78 @@ func (e *EmailSender) Flush(limit int) (int, error) {
 	if err := e.write.Select("email_outbox", params, &due); err != nil {
 		return 0, err
 	}
+	return e.deliverAll(due), nil
+}
 
+// FlushFor delivers the queued messages for one review and nothing else.
+//
+// Flush takes the oldest `limit` rows across the whole outbox, so a caller that
+// has just queued a message and needs it gone before it does something else --
+// notifyRejection, which purges the address immediately afterwards -- cannot
+// rely on it: with a backlog deeper than the limit, the row it just wrote is
+// not in the batch. Selecting by review is the only version of that which is
+// actually true.
+//
+// Deliberately ignores `next_attempt_at`: the caller is asking for this
+// message now, and a row queued microseconds ago is due by construction.
+func (e *EmailSender) FlushFor(reviewID string) (int, error) {
+	params := url.Values{}
+	params.Set("select", "*")
+	params.Set("status", "eq.queued")
+	params.Set("review_id", "eq."+reviewID)
+	params.Set("order", "id.asc")
+
+	var due []outboxRow
+	if err := e.write.Select("email_outbox", params, &due); err != nil {
+		return 0, err
+	}
+	return e.deliverAll(due), nil
+}
+
+// deliverAll returns how many messages actually left, not how many rows it
+// looked at. A deferred message is still queued and its caller must not treat
+// it as delivered.
+func (e *EmailSender) deliverAll(due []outboxRow) int {
 	sent := 0
 	for _, row := range due {
-		if err := e.deliver(row); err != nil {
+		outcome, err := e.deliver(row)
+		if err != nil {
 			log.Printf("email %d (%s) failed: %v", row.ID, row.Template, err)
 			continue
 		}
-		sent++
+		if outcome == deliverySent {
+			sent++
+		}
 	}
-	return sent, nil
+	return sent
 }
 
-func (e *EmailSender) deliver(row outboxRow) error {
+// deliveryOutcome distinguishes "gone" from "still queued".
+//
+// `deliver` used to answer with a bare error, and returned nil for a message it
+// had merely rescheduled -- so a provider cap, which is the case the whole
+// outbox exists to handle, counted as a successful send. The sweep's
+// `emails_sent` figure was really "rows considered", and `notifyRejection`,
+// which purges the reviewer's address once the mail is away, would have purged
+// it on a deferral and abandoned the message on the next pass.
+type deliveryOutcome int
+
+const (
+	// Accepted by the provider. This is the only outcome that means the
+	// message has left.
+	deliverySent deliveryOutcome = iota
+	// Still queued, with a later next_attempt_at. Not a failure.
+	deliveryDeferred
+	// Will never be sent, and the row says why.
+	deliveryAbandoned
+)
+
+func (e *EmailSender) deliver(row outboxRow) (deliveryOutcome, error) {
 	if e.cfg.BrevoAPIKey == "" {
-		return e.reschedule(row, "BREVO_API_KEY not configured")
+		return deliveryDeferred, e.reschedule(row, "BREVO_API_KEY not configured")
 	}
 	if row.Recipient == nil || *row.Recipient == "" {
-		return e.abandon(row, "no recipient")
+		return deliveryAbandoned, e.abandon(row, "no recipient")
 	}
 
 	subject, html, text := renderTemplate(e.cfg, row)
@@ -140,12 +196,12 @@ func (e *EmailSender) deliver(row outboxRow) error {
 	}
 	encoded, err := json.Marshal(body)
 	if err != nil {
-		return err
+		return deliveryAbandoned, err
 	}
 
 	req, err := http.NewRequest(http.MethodPost, brevoEndpoint, bytes.NewReader(encoded))
 	if err != nil {
-		return err
+		return deliveryAbandoned, err
 	}
 	req.Header.Set("api-key", e.cfg.BrevoAPIKey)
 	req.Header.Set("Content-Type", "application/json")
@@ -153,28 +209,28 @@ func (e *EmailSender) deliver(row outboxRow) error {
 
 	res, err := e.http.Do(req)
 	if err != nil {
-		return e.reschedule(row, err.Error())
+		return deliveryDeferred, e.reschedule(row, err.Error())
 	}
 	defer res.Body.Close()
 
 	switch {
 	case res.StatusCode >= 200 && res.StatusCode < 300:
-		return e.markSent(row)
+		return deliverySent, e.markSent(row)
 
 	case res.StatusCode == http.StatusTooManyRequests || res.StatusCode == 402:
 		// Rate limited, or the plan's daily allowance is exhausted. Not a
 		// failure: the message waits. This is the case the whole outbox exists
 		// for, so it is logged distinctly rather than as a generic error.
 		log.Printf("email %d deferred: provider cap or rate limit (HTTP %d)", row.ID, res.StatusCode)
-		return e.reschedule(row, fmt.Sprintf("provider cap or rate limit: HTTP %d", res.StatusCode))
+		return deliveryDeferred, e.reschedule(row, fmt.Sprintf("provider cap or rate limit: HTTP %d", res.StatusCode))
 
 	case res.StatusCode >= 400 && res.StatusCode < 500:
 		// A malformed request or a rejected address will not become valid on
 		// a retry, so retrying only burns allowance.
-		return e.abandon(row, fmt.Sprintf("permanent HTTP %d", res.StatusCode))
+		return deliveryAbandoned, e.abandon(row, fmt.Sprintf("permanent HTTP %d", res.StatusCode))
 
 	default:
-		return e.reschedule(row, fmt.Sprintf("HTTP %d", res.StatusCode))
+		return deliveryDeferred, e.reschedule(row, fmt.Sprintf("HTTP %d", res.StatusCode))
 	}
 }
 
@@ -239,12 +295,103 @@ func (e *EmailSender) PurgeContact(reviewID string) {
 	}
 }
 
+// PurgeSettledContacts drops addresses for reviews that have reached a
+// terminal status and have no mail still waiting to go out.
+//
+// The per-decision purge cannot be the only one. A rejection notice is now
+// purged only once it has actually been delivered, so a review whose mail was
+// deferred by a provider cap keeps its address until the sweep sends it -- and
+// without this pass, nothing would ever come back for it. Retention has to
+// terminate on the review's own lifecycle rather than on whether one code path
+// happened to run.
+func (e *EmailSender) PurgeSettledContacts(limit int) (int, error) {
+	held := url.Values{}
+	held.Set("select", "review_id")
+	held.Set("recipient", "not.is.null")
+	held.Set("review_id", "not.is.null")
+	held.Set("limit", strconv.Itoa(limit))
+
+	var holding []struct {
+		ReviewID *string `json:"review_id"`
+	}
+	if err := e.write.Select("email_outbox", held, &holding); err != nil {
+		return 0, err
+	}
+
+	ids := map[string]struct{}{}
+	for _, row := range holding {
+		if row.ReviewID != nil && *row.ReviewID != "" {
+			ids[*row.ReviewID] = struct{}{}
+		}
+	}
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	idList := make([]string, 0, len(ids))
+	for id := range ids {
+		idList = append(idList, id)
+	}
+	inList := "in.(" + strings.Join(idList, ",") + ")"
+
+	// Of those, the ones that have finished.
+	settled := url.Values{}
+	settled.Set("select", "id")
+	settled.Set("id", inList)
+	settled.Set("status", "in.(approved,rejected,withdrawn)")
+
+	var terminal []struct {
+		ID string `json:"id"`
+	}
+	if err := e.write.Select("reviews", settled, &terminal); err != nil {
+		return 0, err
+	}
+	if len(terminal) == 0 {
+		return 0, nil
+	}
+
+	// Minus any whose mail has not gone out yet. Purging those would abandon
+	// the message, which is the bug this whole pass exists to avoid repeating.
+	pendingMail := url.Values{}
+	pendingMail.Set("select", "review_id")
+	pendingMail.Set("review_id", inList)
+	pendingMail.Set("status", "eq.queued")
+
+	var queued []struct {
+		ReviewID *string `json:"review_id"`
+	}
+	if err := e.write.Select("email_outbox", pendingMail, &queued); err != nil {
+		return 0, err
+	}
+	waiting := map[string]struct{}{}
+	for _, row := range queued {
+		if row.ReviewID != nil {
+			waiting[*row.ReviewID] = struct{}{}
+		}
+	}
+
+	purged := 0
+	for _, review := range terminal {
+		if _, stillWaiting := waiting[review.ID]; stillWaiting {
+			continue
+		}
+		e.PurgeContact(review.ID)
+		purged++
+	}
+	return purged, nil
+}
+
 func (e *EmailSender) reschedule(row outboxRow, reason string) error {
 	attempts := row.Attempts + 1
-	if attempts >= len(emailBackoff) {
+	if attempts > len(emailBackoff) {
 		return e.abandon(row, "retries exhausted: "+reason)
 	}
-	next := time.Now().UTC().Add(emailBackoff[attempts])
+	// `attempts-1`, so the first retry uses the first entry.
+	//
+	// This indexed by `attempts`, which skipped entry zero entirely: the
+	// declared schedule read 1m/10m/1h/6h/25h and the delivered one was
+	// 10m/1h/6h/25h. The one-minute step -- the only one that helps with a
+	// blip rather than an outage -- never ran.
+	next := time.Now().UTC().Add(emailBackoff[attempts-1])
 	return e.write.Update("email_outbox", eq("id", fmt.Sprintf("%d", row.ID)), map[string]any{
 		"attempts":        attempts,
 		"next_attempt_at": next.Format(time.RFC3339),

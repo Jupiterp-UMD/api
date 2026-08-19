@@ -114,6 +114,16 @@ func (w *WriteClient) Delete(table string, params url.Values) error {
 	return w.decode(http.MethodDelete, table, params, nil, "", nil)
 }
 
+// DeleteReturning removes rows and decodes the ones it removed into out.
+//
+// Exists so a caller can report how many rows a purge actually touched.
+// Without the representation there is nothing to count, and a maintenance
+// endpoint that reports "1" for "the statement ran" tells an operator less
+// than it appears to.
+func (w *WriteClient) DeleteReturning(table string, params url.Values, out any) error {
+	return w.decode(http.MethodDelete, table, params, nil, "return=representation", out)
+}
+
 // RPC calls a Postgres function.
 func (w *WriteClient) RPC(fn string, args any, out any) error {
 	return w.decode(http.MethodPost, "rpc/"+fn, nil, args, "", out)

@@ -102,7 +102,7 @@ type CoursesArgs struct {
 	// The offset of courses to view. For example, offset=30 will return
 	// courses starting at the 30th result.
 	// Default value: 0
-	Offset uint16 `form:"offset"`
+	Offset uint32 `form:"offset"`
 
 	// String of columns to sort by
 	SortBy string `form:"sortBy"`
@@ -147,7 +147,7 @@ type CoursesWithSectionsArgs struct {
 	// The offset of courses to view. For example, offset=30 will return
 	// courses starting at the 30th result.
 	// Default value: 0
-	Offset uint16 `form:"offset"`
+	Offset uint32 `form:"offset"`
 
 	// String of columns to sort by
 	SortBy string `form:"sortBy"`
@@ -175,7 +175,7 @@ type SectionsArgs struct {
 	// The offset of sections to view. For example, offset=30 will return
 	// sections starting at the 30th result.
 	// Default value: 0
-	Offset uint16 `form:"offset"`
+	Offset uint32 `form:"offset"`
 
 	// String of columns to sort by
 	SortBy string `form:"sortBy"`
@@ -250,7 +250,7 @@ type InstructorArgs struct {
 	// The offset of sections to view. For example, offset=30 will return
 	// sections starting at the 30th result.
 	// Default value: 0
-	Offset uint16 `form:"offset"`
+	Offset uint32 `form:"offset"`
 
 	// String of columns to sort by
 	SortBy string `form:"sortBy"`
@@ -333,7 +333,7 @@ type GradesArgs struct {
 
 	// The offset of records to view.
 	// Default value: 0
-	Offset uint16 `form:"offset"`
+	Offset uint32 `form:"offset"`
 
 	// String of columns to sort by
 	SortBy string `form:"sortBy"`
@@ -414,7 +414,7 @@ type GradeSummaryArgs struct {
 
 	// The offset of records to view.
 	// Default value: 0
-	Offset uint16 `form:"offset"`
+	Offset uint32 `form:"offset"`
 
 	// String of columns to sort by
 	SortBy string `form:"sortBy"`
@@ -818,6 +818,15 @@ func (client SupabaseClient) handleGetSections(ctx *gin.Context) {
 		sendInvalidArgsError(ctx, reflect.TypeOf(args), path, err)
 		return
 	}
+	// Both target `course_code`, and the query builder honors only one. Its own
+	// message rather than checkCourseFilters', which names a `number` parameter
+	// this endpoint does not have.
+	if args.CourseCodes != "" && args.CoursePrefix != "" {
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"error": "cannot specify both courseCodes and prefix",
+		})
+		return
+	}
 	args.setDefaults()
 
 	key := buildCacheKey(ctx.Request)
@@ -914,6 +923,14 @@ func (client SupabaseClient) handleGetGradeSummary(ctx *gin.Context) {
 		return
 	}
 	if err := checkCourseFilters(args.CourseCodes, args.Prefix, args.Number); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	// `getGradeSummary` honors instructorId, then instructorSlug, then
+	// instructor, in that fixed order -- so two of them means one is dropped.
+	// `/grades` has always rejected that; this endpoint accepted it and
+	// answered with rows the caller did not ask for.
+	if err := checkInstructorFilters(args.Instructor, args.InstructorSlug, args.InstructorId); err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}

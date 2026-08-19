@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -55,10 +56,53 @@ var (
 	// Allegations about a specific person that a site cannot responsibly
 	// publish on a stranger's say-so. These escalate to a human regardless of
 	// what the classifier concludes.
-	misconductRe = regexp.MustCompile(`(?i)\b(assault|harass\w*|rape|racist|sexist|homophob\w*|` +
-		`pedophil\w*|predator|stalk\w*|abus\w*|discriminat\w*|drunk|intoxicat\w*|` +
-		`stole|steal|fraud|bribe|criminal|arrest\w*|lawsuit|sued)\b`)
+	//
+	// Split in two, because one list could not be both accurate and useful.
+	// This tier is vocabulary with no ordinary use in a course review, and it
+	// escalates on sight.
+	misconductRe = regexp.MustCompile(`(?i)\b(assault\w*|rape[sd]?|raping|harass\w*|` +
+		`pedophil\w*|molest\w*|racist|racism|sexist|sexism|homophob\w*|transphob\w*|` +
+		`misogyn\w*|briber\w*|bribe[sd]?|fraud|lawsuit|sued|plagiaris\w*|plagiariz\w*)\b`)
+
+	// The second tier is vocabulary students also use hyperbolically about the
+	// *work* rather than about the person: "an abusive workload", "this class
+	// stole my semester", "criminally hard", "the exams are predatory". Under a
+	// single list every one of those escalated, and at volume that is not the
+	// safe default it looks like -- a queue full of false escalations is a
+	// queue that stops being read carefully, which is the failure this flag
+	// exists to prevent.
+	ambiguousMisconductRe = regexp.MustCompile(`(?i)\b(abus\w*|drunk|intoxicat\w*|` +
+		`stole|stolen|steal\w*|criminal\w*|predator\w*|stalk\w*|discriminat\w*|` +
+		`arrest\w*|creep\w*|inappropriate)\b`)
+
+	// What makes a sentence about a person rather than about the work. Used
+	// only to decide whether a second-tier word is an allegation.
+	personReferentRe = regexp.MustCompile(`(?i)\b(he|him|his|she|her|hers|they|them|their|` +
+		`prof|professor|instructor|teacher|lecturer|doctor|dr|mr|mrs|ms|` +
+		`ta|tas|guy|man|woman|person)\b`)
 )
+
+// How far either side of an ambiguous word to look for a personal referent.
+// Wide enough to cross a clause, narrow enough not to span a whole review.
+const allegationWindow = 40
+
+// personalAllegation reports whether a second-tier misconduct word is being
+// applied to a person.
+//
+// A heuristic, and meant to be one: it moves "an abusive workload" out of the
+// queue and keeps "he was abusive" in it. It errs toward escalating -- a
+// review that mentions the professor anywhere near the word still goes to a
+// human -- because that is the direction where being wrong is cheap.
+func personalAllegation(text string) bool {
+	for _, loc := range ambiguousMisconductRe.FindAllStringIndex(text, -1) {
+		start := max(loc[0]-allegationWindow, 0)
+		end := min(loc[1]+allegationWindow, len(text))
+		if personReferentRe.MatchString(text[start:end]) {
+			return true
+		}
+	}
+	return false
+}
 
 // PrefilterResult is what the deterministic pass concluded.
 type PrefilterResult struct {
@@ -91,7 +135,7 @@ func prefilter(title, body string) PrefilterResult {
 		add("possible_prompt_injection")
 		result.MustEscalate = true
 	}
-	if misconductRe.MatchString(text) {
+	if misconductRe.MatchString(text) || personalAllegation(text) {
 		// Not a rejection. Some of these words appear in legitimate reviews
 		// ("the grading felt discriminatory") and the point is that a person
 		// reads them, not that they are refused.
@@ -233,23 +277,62 @@ func (t *TriageClient) Dispatch(reviewID string) {
 		SubmittedAt:    review.SubmittedAt,
 	}
 
-	if err := t.post(payload); err != nil {
-		// The sweeper will pick this up. Leaving it pending rather than
-		// escalating immediately gives a brief outage a chance to resolve
-		// without generating human work.
-		log.Printf("triage: webhook post failed for %s: %v", reviewID, err)
+	status, err := t.post(payload)
+	if err != nil {
+		// Parked rather than escalated, so a brief outage resolves itself
+		// without generating human work. The park is what the sweeper looks
+		// for; without it the review is invisible to the retry branch and only
+		// the timeout would ever move it.
+		log.Printf("triage: webhook post failed for %s (status %d): %v", reviewID, status, err)
+		t.park(reviewID, t.parkRetryDelay(status))
 	}
 }
 
-func (t *TriageClient) post(payload triagePayload) error {
-	encoded, err := json.Marshal(payload)
+// canonicalJSON encodes a payload the way `JSON.stringify` would.
+//
+// This is a signing concern, not a formatting preference. The n8n Code node
+// verifies the HMAC by re-serialising the body it parsed, so the signature only
+// matches when Go and JavaScript agree on the exact bytes -- and by default
+// they do not. `json.Marshal` HTML-escapes `&`, `<` and `>`:
+//
+//	Go:   {"body":"Q&A was great"}
+//	Node: {"body":"Q&A was great"}
+//
+// Different bytes, different digest, `bad signature`. `<` and `>` are stripped
+// by sanitizeText, so `&` was the live case -- and it is ordinary review text:
+// "Q&A sessions", "the TA & professor", any instructor in "Chem & Biochem".
+// Every such review failed verification, was never classified, and escalated a
+// day and a half later by timeout.
+//
+// The one divergence this cannot close is U+2028/U+2029, which Go escapes
+// unconditionally and JavaScript does not. sanitizeText strips both, which is
+// what makes the two encoders exactly equivalent over anything that reaches
+// here. See the note on `invisibleRe`.
+func canonicalJSON(payload any) ([]byte, error) {
+	var buf bytes.Buffer
+	encoder := json.NewEncoder(&buf)
+	encoder.SetEscapeHTML(false)
+	if err := encoder.Encode(payload); err != nil {
+		return nil, err
+	}
+	// Encode appends a newline; Marshal does not, and neither does stringify.
+	return bytes.TrimRight(buf.Bytes(), "\n"), nil
+}
+
+// post signs and delivers one payload, returning the HTTP status it saw.
+//
+// The status is returned rather than folded into the error because the caller
+// parks on it: a quota refusal waits for the quota to reset, anything else
+// retries sooner. A transport failure reports 0, which is neither.
+func (t *TriageClient) post(payload triagePayload) (int, error) {
+	encoded, err := canonicalJSON(payload)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	req, err := http.NewRequest(http.MethodPost, t.cfg.TriageWebhookURL, bytes.NewReader(encoded))
 	if err != nil {
-		return err
+		return 0, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 
@@ -266,13 +349,55 @@ func (t *TriageClient) post(payload triagePayload) error {
 
 	res, err := t.http.Do(req)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	defer res.Body.Close()
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		return fmt.Errorf("triage webhook returned %d", res.StatusCode)
+		return res.StatusCode, fmt.Errorf("triage webhook returned %d", res.StatusCode)
 	}
-	return nil
+	return res.StatusCode, nil
+}
+
+// parkRetryDelay decides how long a failed dispatch waits before the sweeper
+// tries it again.
+//
+// A quota refusal is the case this queue was built for: the model's daily
+// allowance resets on a clock, so waiting out the window is the only thing that
+// helps, and REVIEW_TRIAGE_RETRY_MAX_SEC is that window. Anything else is more
+// likely a transient outage or a bad deploy, where a short delay classifies the
+// review sooner without spending one of its few attempts on a service that is
+// still down.
+func (t *TriageClient) parkRetryDelay(status int) time.Duration {
+	if status == http.StatusTooManyRequests || status == http.StatusPaymentRequired {
+		return t.cfg.TriageRetryMax
+	}
+	const transient = 5 * time.Minute
+	if t.cfg.TriageRetryMax < transient {
+		return t.cfg.TriageRetryMax
+	}
+	return transient
+}
+
+// park schedules another dispatch attempt for the sweeper to pick up.
+//
+// Nothing wrote `next_triage_at` before this existed, which made the entire
+// retry path unreachable: `Sweep`'s parked branch could never match a row,
+// `triage_attempts` never left zero, REVIEW_TRIAGE_MAX_ATTEMPTS never applied,
+// and the boot-time check that REVIEW_TRIAGE_TIMEOUT_SEC exceed
+// REVIEW_TRIAGE_RETRY_MAX_SEC guarded a mechanism that did not run. A
+// quota-blocked review simply sat pending until the timeout escalated it.
+//
+// Worst case before a human sees it is REVIEW_TRIAGE_MAX_ATTEMPTS parks, so
+// with the defaults (3 attempts, 25h) a persistently quota-blocked review
+// reaches the queue about three days out. Shorten REVIEW_TRIAGE_RETRY_MAX_SEC
+// if that is too patient for the volume.
+func (t *TriageClient) park(reviewID string, delay time.Duration) {
+	next := time.Now().UTC().Add(delay)
+	if err := t.write.Update("reviews", eq("id", reviewID), map[string]any{
+		"next_triage_at": next.Format(time.RFC3339),
+	}, nil); err != nil {
+		log.Printf("triage: parking %s for retry failed: %v", reviewID, err)
+	}
 }
 
 // escalate marks a review for human attention and notifies the channel.
@@ -374,7 +499,7 @@ func (t *TriageClient) notifyDiscord(reviewID, decision string, confidence float
 // Not optional. Without it, a silently broken workflow looks exactly like "no
 // reviews were submitted this week", and reviews sit in limbo indefinitely
 // while their authors have been told they are awaiting moderation.
-func (t *TriageClient) Sweep() (retried int, escalated int) {
+func (t *TriageClient) Sweep() (retried int, escalated int, err error) {
 	now := time.Now().UTC()
 
 	// Parked reviews whose retry is due.
@@ -388,9 +513,23 @@ func (t *TriageClient) Sweep() (retried int, escalated int) {
 		ID       string `json:"id"`
 		Attempts int    `json:"triage_attempts"`
 	}
-	if err := t.write.Select("reviews", params, &parked); err != nil {
-		log.Printf("sweep: loading parked reviews failed: %v", err)
+	if selectErr := t.write.Select("reviews", params, &parked); selectErr != nil {
+		// Reported, not just logged. A sweep whose first query fails still
+		// answers for the rest of its work, but the caller has to be able to
+		// tell that it did less than it looks like.
+		log.Printf("sweep: loading parked reviews failed: %v", selectErr)
+		err = fmt.Errorf("loading parked reviews: %w", selectErr)
 	}
+
+	// Reviews this run has just re-dispatched.
+	//
+	// The retry clears `next_triage_at` before dispatching, which is exactly
+	// the shape the stale query below looks for. Without this set, a review on
+	// its second retry -- parked 25h, retried, parked again to 50h, retried --
+	// is older than the 30h timeout by the time it comes back round, so the
+	// same sweep that just handed it to the classifier would escalate it for
+	// not having answered. It has had no time to answer at all.
+	justRetried := make(map[string]struct{}, len(parked))
 
 	for _, review := range parked {
 		if review.Attempts >= t.cfg.TriageMaxAttempts {
@@ -407,6 +546,7 @@ func (t *TriageClient) Sweep() (retried int, escalated int) {
 			log.Printf("sweep: clearing park on %s failed: %v", review.ID, err)
 			continue
 		}
+		justRetried[review.ID] = struct{}{}
 		t.Dispatch(review.ID)
 		retried++
 	}
@@ -424,18 +564,21 @@ func (t *TriageClient) Sweep() (retried int, escalated int) {
 	var stalled []struct {
 		ID string `json:"id"`
 	}
-	if err := t.write.Select("reviews", stale, &stalled); err != nil {
-		log.Printf("sweep: loading stalled reviews failed: %v", err)
-		return retried, escalated
+	if selectErr := t.write.Select("reviews", stale, &stalled); selectErr != nil {
+		log.Printf("sweep: loading stalled reviews failed: %v", selectErr)
+		return retried, escalated, errors.Join(err, fmt.Errorf("loading stalled reviews: %w", selectErr))
 	}
 
 	for _, review := range stalled {
+		if _, retriedThisRun := justRetried[review.ID]; retriedThisRun {
+			continue
+		}
 		t.escalate(review.ID, []string{"triage_timeout"},
 			fmt.Sprintf("no triage decision within %s", t.cfg.TriageTimeout))
 		escalated++
 	}
 
-	return retried, escalated
+	return retried, escalated, err
 }
 
 // PurgeAbandoned deletes unverified submissions past their token expiry.
@@ -443,15 +586,23 @@ func (t *TriageClient) Sweep() (retried int, escalated int) {
 // An abandoned submission otherwise holds its slot in the one-review-per-person
 // index forever, so a reviewer who mistyped their address could never try
 // again.
-func (t *TriageClient) PurgeAbandoned() int {
+func (t *TriageClient) PurgeAbandoned() (int, error) {
 	cutoff := time.Now().UTC().Add(-48 * time.Hour)
 	params := url.Values{}
 	params.Set("status", "eq.unverified")
 	params.Set("submitted_at", "lt."+cutoff.Format(time.RFC3339))
 
-	if err := t.write.Delete("reviews", params); err != nil {
-		log.Printf("purge: deleting abandoned submissions failed: %v", err)
-		return 0
+	// The representation is what makes the returned figure a row count. This
+	// used to answer a literal 1 for success and 0 for failure, so the sweep's
+	// `purged` field could only ever say "the statement ran" -- indistinguishable
+	// from "nothing was abandoned", and useless for noticing that the purge had
+	// started matching thousands of rows.
+	var deleted []struct {
+		ID string `json:"id"`
 	}
-	return 1
+	if err := t.write.DeleteReturning("reviews", params, &deleted); err != nil {
+		log.Printf("purge: deleting abandoned submissions failed: %v", err)
+		return 0, err
+	}
+	return len(deleted), nil
 }

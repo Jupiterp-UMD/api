@@ -47,14 +47,26 @@ func TestSanitizeTextStripsInvisibleCharacters(t *testing.T) {
 	// Zero-width characters are used to split words so that a slur reads
 	// normally to a human but matches nothing in a filter.
 	cases := map[string]string{
-		"hello​world":               "helloworld",
-		"bad‍word":                  "badword",
-		"‮reversed":                 "reversed",
-		"normal text":               "normal text",
-		"  padded  ":                "padded",
-		"tab\tand\nnewline":         "tab\tand\nnewline",
-		"nul\x00byte":               "nulbyte",
-		"<script>alert(1)</script>": "scriptalert(1)/script",
+		"hello​world":       "helloworld",
+		"bad‍word":          "badword",
+		"‮reversed":         "reversed",
+		"normal text":       "normal text",
+		"  padded  ":        "padded",
+		"tab\tand\nnewline": "tab\tand\nnewline",
+		"nul\x00byte":       "nulbyte",
+
+		// Line and paragraph separators. Invisible, and the two characters Go
+		// escapes in JSON where JavaScript does not -- leaving them in made the
+		// triage HMAC unverifiable for any review containing one.
+		"line sep": "linesep",
+		"para sep": "parasep",
+
+		// Angle brackets survive, because deleting them changes what the
+		// sentence says. Markup is neutralised by escaping at each render
+		// boundary, not by mangling the stored text.
+		"<script>alert(1)</script>": "<script>alert(1)</script>",
+		"anything <70 was curved":   "anything <70 was curved",
+		"you needed >90 for an A":   "you needed >90 for an A",
 	}
 	for input, want := range cases {
 		if got := sanitizeText(input); got != want {

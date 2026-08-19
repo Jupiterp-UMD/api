@@ -119,9 +119,45 @@ func TestOutboxCutoffKeepsSubSecondPrecision(t *testing.T) {
 // Verbs are asserted against the routes actually registered below, so adding a
 // route with a new verb and forgetting the CORS list fails here rather than in
 // someone's browser.
+//
+// A third bug shipped here later, on the read side:
+//
+//   - the write group's catch-all `OPTIONS /v1/*path` also matched the read
+//     routes mounted on the same prefix, so a preflight for `/v1/courses` was
+//     answered by the write origin allowlist and refused with 403 -- on an
+//     endpoint whose GET is open to every origin. `/v0` had no OPTIONS route at
+//     all and answered 404.
+//
+// So this router mirrors `main`'s real structure: a permissive read group on
+// both prefixes and an allowlisted write group, each registering its own
+// OPTIONS routes. A catch-all is deliberately not used, and cannot be -- gin
+// panics if one is added next to the static read routes.
 func newV1TestRouter(allowedOrigins []string) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
+
+	noop := func(ctx *gin.Context) { ctx.Status(http.StatusOK) }
+	preflight := func(ctx *gin.Context) { ctx.Status(http.StatusNoContent) }
+
+	permissive := cors.New(cors.Config{
+		AllowAllOrigins: true,
+		AllowMethods:    []string{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"},
+		AllowHeaders:    []string{"Origin", "Content-Length", "Content-Type"},
+		ExposeHeaders:   []string{"Content-Range"},
+		MaxAge:          12 * time.Hour,
+	})
+
+	registerReads := func(g *gin.RouterGroup) {
+		for _, path := range []string{"/courses", "/sections", "/instructors", "/grades/summary"} {
+			g.GET(path, noop)
+			g.OPTIONS(path, preflight)
+		}
+	}
+	for _, prefix := range []string{"/v1", "/v0"} {
+		g := r.Group(prefix)
+		g.Use(permissive)
+		registerReads(g)
+	}
 
 	v1 := r.Group("/v1")
 	v1.Use(cors.New(cors.Config{
@@ -131,9 +167,13 @@ func newV1TestRouter(allowedOrigins []string) *gin.Engine {
 		AllowCredentials: false,
 		MaxAge:           12 * time.Hour,
 	}))
-	v1.OPTIONS("/*path", func(ctx *gin.Context) { ctx.Status(http.StatusNoContent) })
+	for _, path := range []string{"/reviews", "/reviews/:id", "/reviews/:id/report"} {
+		v1.OPTIONS(path, preflight)
+	}
+	for _, path := range []string{"/admin/reviews/:id", "/admin/instructors/queue", "/admin/instructors/queue/:id"} {
+		v1.OPTIONS(path, preflight)
+	}
 
-	noop := func(ctx *gin.Context) { ctx.Status(http.StatusOK) }
 	v1.GET("/reviews", noop)
 	v1.POST("/reviews", noop)
 	v1.DELETE("/reviews/:id", noop)
@@ -142,6 +182,64 @@ func newV1TestRouter(allowedOrigins []string) *gin.Engine {
 	v1.GET("/admin/instructors/queue", noop)
 	v1.POST("/admin/instructors/queue/:id", noop)
 	return r
+}
+
+// A read preflight must succeed from any origin, on both prefixes.
+//
+// The read surface is a documented public API and its GETs are open to
+// everyone. A caller that sends any header forcing a preflight -- and a
+// third-party client eventually will -- was refused, while the same request
+// without that header worked. Nothing in the site exercised it, because the
+// site is an allowed origin either way.
+func TestReadPreflightIsOpenToAnyOrigin(t *testing.T) {
+	const foreign = "https://some-third-party.example"
+	router := newV1TestRouter([]string{"https://www.jupiterp.com"})
+
+	for _, path := range []string{
+		"/v1/courses", "/v1/sections", "/v1/instructors", "/v1/grades/summary",
+		"/v0/courses", "/v0/sections", "/v0/instructors", "/v0/grades/summary",
+	} {
+		req := httptest.NewRequest(http.MethodOptions, path, nil)
+		req.Header.Set("Origin", foreign)
+		req.Header.Set("Access-Control-Request-Method", "GET")
+		req.Header.Set("Access-Control-Request-Headers", "content-type")
+
+		res := httptest.NewRecorder()
+		router.ServeHTTP(res, req)
+
+		if res.Code == http.StatusNotFound {
+			t.Errorf("preflight for GET %s returned 404: no OPTIONS route on this prefix, "+
+				"so no browser on a foreign origin can send a preflighted read", path)
+			continue
+		}
+		if res.Code == http.StatusForbidden {
+			t.Errorf("preflight for GET %s returned 403: the read routes are being "+
+				"answered by the write origin allowlist", path)
+			continue
+		}
+		if got := res.Header().Get("Access-Control-Allow-Origin"); got != "*" && got != foreign {
+			t.Errorf("preflight for GET %s answered Access-Control-Allow-Origin %q; "+
+				"the read surface is open to every origin", path, got)
+		}
+	}
+}
+
+// And a read GET itself must still expose Content-Range to a foreign origin.
+func TestReadGetExposesContentRangeToAnyOrigin(t *testing.T) {
+	router := newV1TestRouter([]string{"https://www.jupiterp.com"})
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/instructors", nil)
+	req.Header.Set("Origin", "https://some-third-party.example")
+	res := httptest.NewRecorder()
+	router.ServeHTTP(res, req)
+
+	if res.Code != http.StatusOK {
+		t.Fatalf("GET /v1/instructors from a foreign origin returned %d", res.Code)
+	}
+	if !strings.Contains(res.Header().Get("Access-Control-Expose-Headers"), "Content-Range") {
+		t.Error("Content-Range is not exposed, so cross-origin JavaScript reads null " +
+			"from it and cannot page or count")
+	}
 }
 
 func TestPreflightIsAnsweredForEveryV1Verb(t *testing.T) {
@@ -654,5 +752,216 @@ func TestParseModeratorKeysIgnoresMalformedEntries(t *testing.T) {
 	}
 	if keys["alice"] != "key-one" || keys["bob"] != "key-two" {
 		t.Fatalf("unexpected parse result: %v", keys)
+	}
+}
+
+/* ==================== triage webhook signing bytes ====================== */
+
+// The signed bytes must be what `JSON.stringify` produces.
+//
+// The API signs an HMAC over the payload it sends; the n8n Code node verifies
+// by re-serialising the body it parsed. That only agrees when Go and JavaScript
+// emit identical bytes, and by default they do not: `json.Marshal` HTML-escapes
+// `&`, `<` and `>`. Every review containing an ampersand -- "Q&A sessions",
+// "the TA & professor", any instructor in "Chem & Biochem" -- failed the
+// signature check, was never classified, and escalated a day and a half later
+// by timeout, while the alert channel filled with what looked like an attack.
+//
+// The expected string below was produced by running `JSON.stringify` on the
+// same object in node. It is written out in full deliberately: this is a
+// cross-language wire contract, and the only useful form of it is the literal
+// bytes.
+func TestCanonicalJSONMatchesJavaScriptStringify(t *testing.T) {
+	title := "Q&A sessions helped"
+	body := "Grading was <fair> & the curve was >90th percentile"
+	term := 202508
+
+	payload := triagePayload{
+		ReviewID:       "11111111-2222-3333-4444-555555555555",
+		Rating:         4.5,
+		ExpectedGrade:  nil,
+		Title:          &title,
+		Body:           &body,
+		InstructorName: "Chem & Biochem staff",
+		CourseCode:     strPtr("CMSC132"),
+		Term:           &term,
+		PrefilterFlags: []string{},
+		PolicyVersion:  "2026-08-14",
+		SubmittedAt:    "2026-08-14T12:00:00Z",
+	}
+
+	const wantStringify = `{"review_id":"11111111-2222-3333-4444-555555555555","rating":4.5,` +
+		`"expected_grade":null,"title":"Q&A sessions helped",` +
+		`"body":"Grading was <fair> & the curve was >90th percentile",` +
+		`"instructor_name":"Chem & Biochem staff","course_code":"CMSC132","term":202508,` +
+		`"prefilter_flags":[],"policy_version":"2026-08-14","submitted_at":"2026-08-14T12:00:00Z"}`
+
+	got, err := canonicalJSON(payload)
+	if err != nil {
+		t.Fatalf("canonicalJSON returned an error: %v", err)
+	}
+	if string(got) != wantStringify {
+		t.Errorf("signed bytes do not match JSON.stringify.\n got: %s\nwant: %s", got, wantStringify)
+	}
+
+	// And show that the default encoder is what was wrong, so this test fails
+	// loudly rather than quietly if someone reverts to json.Marshal.
+	marshalled, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("json.Marshal returned an error: %v", err)
+	}
+	if string(marshalled) == wantStringify {
+		t.Error("json.Marshal now matches JSON.stringify; if Go stopped HTML-escaping, " +
+			"canonicalJSON can be simplified -- but check U+2028 before doing so")
+	}
+}
+
+func strPtr(s string) *string { return &s }
+
+/* ======================= email retry schedule =========================== */
+
+// Every entry in the backoff table has to be reachable.
+//
+// `reschedule` indexed the table by the *incremented* attempt count, so entry
+// zero was never used: the declared schedule read 1m/10m/1h/6h/25h and the
+// delivered one was 10m/1h/6h/25h. The one-minute step is the only one that
+// helps with a blip rather than an outage, and it never ran.
+func TestEmailBackoffScheduleUsesEveryStep(t *testing.T) {
+	var seen []time.Duration
+	attempts := 0
+	for range len(emailBackoff) + 2 {
+		next := attempts + 1
+		if next > len(emailBackoff) {
+			break
+		}
+		seen = append(seen, emailBackoff[next-1])
+		attempts = next
+	}
+
+	if len(seen) != len(emailBackoff) {
+		t.Fatalf("the retry schedule delivers %d of %d declared steps: %v",
+			len(seen), len(emailBackoff), seen)
+	}
+	for i, want := range emailBackoff {
+		if seen[i] != want {
+			t.Errorf("retry %d waits %v, want %v", i+1, seen[i], want)
+		}
+	}
+	// The last step exists to outlive a provider's daily cap, which resets on a
+	// clock. Losing it turns a deferred send into an abandoned one.
+	if seen[len(seen)-1] < 24*time.Hour {
+		t.Errorf("the final retry waits %v, which is less than a day -- a daily-cap "+
+			"deferral will be abandoned before the cap resets", seen[len(seen)-1])
+	}
+}
+
+/* ==================== misconduct flag false positives =================== */
+
+// Hyperbole about the coursework must not be read as an allegation.
+//
+// The flag matched `abus\w*`, `stole`, `criminal` and friends as bare words, so
+// "an abusive workload" and "this class stole my semester" escalated exactly
+// like a real accusation. Escalation is the safe direction for any one review,
+// but at volume it is not safe at all: a queue full of false escalations stops
+// being read carefully, which is the failure the flag exists to prevent.
+func TestMisconductFlagIgnoresHyperboleAboutTheWork(t *testing.T) {
+	notAllegations := []string{
+		"the workload is abusive and the deadlines are worse",
+		"this class stole my entire semester",
+		"criminally hard exams, but I learned a lot",
+		"the midterm was predatory in how it was scored",
+		"grading felt arbitrary and the curve was stingy",
+	}
+	for _, body := range notAllegations {
+		if prefilter("", body).MustEscalate {
+			t.Errorf("prefilter escalated hyperbole about the coursework: %q", body)
+		}
+	}
+}
+
+// ...while the same words applied to a person still escalate.
+func TestMisconductFlagStillCatchesAllegationsAboutAPerson(t *testing.T) {
+	allegations := []string{
+		"he was verbally abusive to a student in my section",
+		"she showed up drunk to lecture twice",
+		"the professor stole a grad student's work",
+		"this instructor is a creep, avoid",
+		"he harassed a student in my section",
+		"I heard she was arrested last year",
+	}
+	for _, body := range allegations {
+		if !prefilter("", body).MustEscalate {
+			t.Errorf("prefilter did not escalate an allegation about a person: %q", body)
+		}
+	}
+}
+
+/* ========================= review id validation ========================= */
+
+// A malformed review id is the caller's mistake, not a server fault.
+//
+// It went straight into a PostgREST filter or insert, which answered 400 for a
+// bad uuid -- and `sendInternalError` reported that to the caller as a 500 and
+// wrote it into the log a real abuse incident would be investigated from.
+func TestUUIDValidationRejectsWhatPostgRESTWouldReject(t *testing.T) {
+	valid := []string{
+		"11111111-2222-3333-4444-555555555555",
+		"AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE",
+	}
+	for _, id := range valid {
+		if !uuidRe.MatchString(id) {
+			t.Errorf("uuidRe rejected a valid uuid: %q", id)
+		}
+	}
+
+	invalid := []string{
+		"", "not-a-uuid", "1", "11111111-2222-3333-4444",
+		"11111111-2222-3333-4444-5555555555555",
+		"11111111222233334444555555555555",
+		"11111111-2222-3333-4444-55555555555g",
+		"11111111-2222-3333-4444-555555555555 or 1=1",
+	}
+	for _, id := range invalid {
+		if uuidRe.MatchString(id) {
+			t.Errorf("uuidRe accepted something that is not a uuid: %q", id)
+		}
+	}
+}
+
+/* ================== deferred mail is not delivered mail ================= */
+
+// A deferred send must not be counted as a sent one.
+//
+// `deliver` answered with a bare error and returned nil for a message it had
+// only rescheduled, so the outcome the outbox exists to handle -- a provider
+// cap -- was indistinguishable from success. Two things depended on the difference:
+// the sweep's `emails_sent` figure, which was really "rows considered"; and
+// `notifyRejection`, which purges the reviewer's address once the mail is away
+// and would otherwise have purged it on a deferral, leaving `deliver` to
+// abandon the message for having no recipient on the next pass. That is the
+// same class of bug as the one the recipient column was kept alive to fix.
+func TestOnlyASentMessageCountsAsSent(t *testing.T) {
+	if deliverySent == deliveryDeferred || deliverySent == deliveryAbandoned {
+		t.Fatal("the delivery outcomes are not distinct")
+	}
+
+	// The states a queued message can end a delivery attempt in, and whether
+	// the caller may treat the address as no longer needed.
+	cases := []struct {
+		outcome deliveryOutcome
+		name    string
+		purgeOK bool
+	}{
+		{deliverySent, "sent", true},
+		{deliveryDeferred, "deferred by a provider cap", false},
+		{deliveryAbandoned, "abandoned", false},
+	}
+	for _, tc := range cases {
+		counted := tc.outcome == deliverySent
+		if counted != tc.purgeOK {
+			t.Errorf("a %s message counts as sent = %v, but purging its address is "+
+				"safe = %v; these have to agree or the address goes before the mail does",
+				tc.name, counted, tc.purgeOK)
+		}
 	}
 }

@@ -59,10 +59,27 @@ var (
 	courseCodeRe = regexp.MustCompile(`^[A-Z]{4}\d{3}[A-Z]?$`)
 	emailRe      = regexp.MustCompile(`^[^@\s]+@[^@\s]+\.[^@\s]+$`)
 
+	// `reviews.id` is a uuid. Checked before the value reaches a filter or an
+	// insert, because PostgREST answers a malformed uuid with a 400 that
+	// sendInternalError then reports to the caller as a 500 -- a client error
+	// logged and returned as a server fault, which is both the wrong status
+	// and noise in exactly the log an abuse incident is investigated from.
+	uuidRe = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
+
 	// Zero-width and bidirectional-override characters. These are invisible
 	// and are used to smuggle content past both moderators and classifiers --
 	// a slur split by zero-width joiners reads normally and matches nothing.
-	invisibleRe = regexp.MustCompile(`[\x{200B}-\x{200F}\x{202A}-\x{202E}\x{2060}-\x{206F}\x{FEFF}]`)
+	//
+	// The second range starts at U+2028 rather than U+202A, so it now also
+	// covers LINE SEPARATOR and PARAGRAPH SEPARATOR. Both are invisible
+	// formatting characters with no place in a review on their own merits, and
+	// removing them is also what makes the triage signature reliable: Go
+	// escapes them in JSON unconditionally and JavaScript does not, so a review
+	// containing one could never verify. See canonicalJSON in triage.go.
+	//
+	// U+2010 to U+2027 are deliberately outside it -- those are hyphens,
+	// quotation marks and bullets that people really type.
+	invisibleRe = regexp.MustCompile(`[\x{200B}-\x{200F}\x{2028}-\x{202E}\x{2060}-\x{206F}\x{FEFF}]`)
 
 	// C0 and C1 control characters, except tab and newline.
 	controlRe = regexp.MustCompile(`[\x{0000}-\x{0008}\x{000B}\x{000C}\x{000E}-\x{001F}\x{007F}-\x{009F}]`)
@@ -76,10 +93,23 @@ var (
 func sanitizeText(value string) string {
 	value = invisibleRe.ReplaceAllString(value, "")
 	value = controlRe.ReplaceAllString(value, "")
-	// Any HTML is stripped rather than escaped: reviews are plain text, and
-	// there is no case where a reviewer needs markup.
-	value = strings.ReplaceAll(value, "<", "")
-	value = strings.ReplaceAll(value, ">", "")
+	// Angle brackets are kept.
+	//
+	// They used to be deleted outright, on the reasoning that reviews are plain
+	// text and never need markup. The reasoning is right and the method was
+	// not: deletion is not neutral, it changes what the sentence says.
+	// "anything <70 was curved" became "anything 70 was curved" and
+	// "scored >90" became "scored 90" -- an inversion, published as the
+	// student's own words, with the moderator reading the altered version too.
+	//
+	// What actually keeps the markup inert is contextual escaping, and every
+	// path that renders review text already does it: the site and the
+	// moderation queue interpolate with `{...}`, which Svelte escapes; the
+	// professor page's one `{@html}` block is JSON-LD that rewrites every `<`
+	// to its escaped unicode form before it goes out; and the email templates
+	// run htmlEscape.
+	// Storing the character and escaping at each boundary is both safe and
+	// faithful, which stripping was not.
 	return strings.TrimSpace(value)
 }
 
@@ -149,8 +179,27 @@ func (s *ReviewServer) HandleSubmit(ctx *gin.Context) {
 	}
 
 	ip := clientIP(ctx)
+	ipBucket := "ip:" + hashOpaque(ip, s.cfg.EmailPepper)
 
-	// 1. Captcha.
+	// 1. Per-IP rate limit, before anything that costs money or a round trip.
+	//
+	// This used to sit after the captcha, so a caller sending junk tokens got
+	// an unmetered outbound request to Cloudflare per inbound request -- each
+	// holding a Cloud Run request slot for up to the ten-second client timeout
+	// -- and never touched a counter, because the counter was only reached by
+	// requests that had already passed. The cheap local check belongs first.
+	within, err := checkRateLimit(s.write, ipBucket, limitPerIP)
+	if err != nil {
+		log.Printf("rate limit check failed: %v", err)
+		ctx.JSON(http.StatusServiceUnavailable, gin.H{"error": "try again shortly"})
+		return
+	}
+	if !within {
+		ctx.JSON(http.StatusTooManyRequests, gin.H{"error": "too many reviews submitted recently"})
+		return
+	}
+
+	// 2. Captcha.
 	ok, err := verifyTurnstile(s.cfg, req.CaptchaToken, ip)
 	if err != nil {
 		log.Printf("turnstile verification errored: %v", err)
@@ -162,7 +211,7 @@ func (s *ReviewServer) HandleSubmit(ctx *gin.Context) {
 		return
 	}
 
-	// 2. Email shape and domain.
+	// 3. Email shape and domain.
 	email := strings.ToLower(strings.TrimSpace(req.Email))
 	if !emailRe.MatchString(email) {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": "that does not look like an email address"})
@@ -178,27 +227,20 @@ func (s *ReviewServer) HandleSubmit(ctx *gin.Context) {
 
 	emailHash := hashEmail(email, s.cfg.EmailPepper)
 
-	// 3. Rate limits, before any expensive work.
-	for _, check := range []struct {
-		bucket string
-		limit  RateLimit
-	}{
-		{"ip:" + hashOpaque(ip, s.cfg.EmailPepper), limitPerIP},
-		{"email:" + emailHash, limitPerEmail},
-	} {
-		within, err := checkRateLimit(s.write, check.bucket, check.limit)
-		if err != nil {
-			log.Printf("rate limit check failed: %v", err)
-			ctx.JSON(http.StatusServiceUnavailable, gin.H{"error": "try again shortly"})
-			return
-		}
-		if !within {
-			ctx.JSON(http.StatusTooManyRequests, gin.H{"error": "too many reviews submitted recently"})
-			return
-		}
+	// 4. Per-address rate limit. Only reachable once the address is known to
+	// be well-formed and in an allowed domain.
+	within, err = checkRateLimit(s.write, "email:"+emailHash, limitPerEmail)
+	if err != nil {
+		log.Printf("rate limit check failed: %v", err)
+		ctx.JSON(http.StatusServiceUnavailable, gin.H{"error": "try again shortly"})
+		return
+	}
+	if !within {
+		ctx.JSON(http.StatusTooManyRequests, gin.H{"error": "too many reviews submitted recently"})
+		return
 	}
 
-	// 4. Instructor exists.
+	// 5. Instructor exists.
 	instructor, err := s.instructorBySlug(req.InstructorSlug)
 	if err != nil {
 		log.Printf("instructor lookup failed: %v", err)
@@ -216,7 +258,7 @@ func (s *ReviewServer) HandleSubmit(ctx *gin.Context) {
 	// the request through, which disabled the anti-brigading control precisely
 	// when the database was struggling -- the moment a brigade is most likely
 	// to be what is causing the load.
-	within, err := checkRateLimit(s.write, fmt.Sprintf("instructor:%d", instructor.ID), limitPerInstructor)
+	within, err = checkRateLimit(s.write, fmt.Sprintf("instructor:%d", instructor.ID), limitPerInstructor)
 	if err != nil {
 		log.Printf("per-instructor rate limit check failed for instructor %d: %v", instructor.ID, err)
 		ctx.JSON(http.StatusServiceUnavailable, gin.H{"error": "try again shortly"})
@@ -228,14 +270,14 @@ func (s *ReviewServer) HandleSubmit(ctx *gin.Context) {
 		return
 	}
 
-	// 5. Course code, if given.
+	// 6. Course code, if given.
 	courseCode := strings.ToUpper(strings.TrimSpace(req.CourseCode))
 	if courseCode != "" && !courseCodeRe.MatchString(courseCode) {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": "course code should look like CMSC132"})
 		return
 	}
 
-	// 6. Term.
+	// 7. Term.
 	if req.Term != nil && !validTerm(*req.Term, time.Now()) {
 		ctx.JSON(http.StatusBadRequest, gin.H{
 			"error": "term must be a past or current Fall or Spring term, like 202508",
@@ -243,7 +285,7 @@ func (s *ReviewServer) HandleSubmit(ctx *gin.Context) {
 		return
 	}
 
-	// 7. Rating, on a half step.
+	// 8. Rating, on a half step.
 	if !validRating(*req.Rating) {
 		ctx.JSON(http.StatusBadRequest, gin.H{
 			"error": "rating must be between 1 and 5 in half steps, like 3.5",
@@ -251,7 +293,7 @@ func (s *ReviewServer) HandleSubmit(ctx *gin.Context) {
 		return
 	}
 
-	// 8. Content limits and sanitisation.
+	// 9. Content limits and sanitisation.
 	title := sanitizeText(req.Title)
 	body := sanitizeText(req.Body)
 	if len([]rune(title)) > 120 {
@@ -268,7 +310,7 @@ func (s *ReviewServer) HandleSubmit(ctx *gin.Context) {
 		return
 	}
 
-	// 9. Insert, mint a verification token, queue the email.
+	// 10. Insert, mint a verification token, queue the email.
 	verifyToken, err := newToken()
 	if err != nil {
 		sendInternalError(ctx, "v1/reviews", err)
@@ -351,6 +393,14 @@ func (s *ReviewServer) HandleSubmit(ctx *gin.Context) {
 	}
 
 	// Delivery does not block the response.
+	//
+	// Requires the service to be deployed with CPU always allocated
+	// (`--no-cpu-throttling`). Cloud Run throttles a container's CPU to near
+	// zero between requests by default, so work started after the response is
+	// written can be suspended indefinitely and lost when the instance is
+	// reclaimed. The hourly sweep drains the outbox either way, so the cost
+	// here is a late verification link rather than a missing one -- but see
+	// HandleVerify, where the same pattern has a much longer backstop.
 	go func() {
 		if _, err := s.email.Flush(5); err != nil {
 			log.Printf("email flush after submit failed: %v", err)
@@ -500,6 +550,13 @@ func (s *ReviewServer) HandleVerify(ctx *gin.Context) {
 
 	// Fire-and-forget: the reviewer's request completes as soon as the status
 	// flips. They are never made to wait on n8n or on a model.
+	//
+	// Also requires `--no-cpu-throttling`. This one has no cheap backstop: if
+	// the goroutine never runs, the review stays `pending` with no park on it,
+	// and only the REVIEW_TRIAGE_TIMEOUT_SEC sweep will move it -- a day and a
+	// half later by default, while its author has been told it is awaiting
+	// moderation. The deploy flag is what makes that path rare rather than
+	// routine.
 	go s.triage.Dispatch(review.ID)
 
 	ctx.JSON(http.StatusOK, gin.H{
@@ -548,6 +605,12 @@ func (s *ReviewServer) authorizeManage(ctx *gin.Context) (*reviewRow, bool) {
 	key := bearerToken(ctx)
 	if key == "" {
 		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "manage key required"})
+		return nil, false
+	}
+	// Same answer as a wrong key, so a malformed id is not a distinguishable
+	// response either -- and so it never reaches PostgREST as a bad uuid.
+	if !uuidRe.MatchString(ctx.Param("id")) {
+		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "not authorized for that review"})
 		return nil, false
 	}
 
@@ -631,6 +694,12 @@ type ReportRequest struct {
 // reply -- which makes the response time on these load-bearing rather than a
 // nicety.
 func (s *ReviewServer) HandleReport(ctx *gin.Context) {
+	reviewID := ctx.Param("id")
+	if !uuidRe.MatchString(reviewID) {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "that is not a review id"})
+		return
+	}
+
 	var req ReportRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": "malformed request body"})
@@ -651,7 +720,7 @@ func (s *ReviewServer) HandleReport(ctx *gin.Context) {
 	}
 
 	row := map[string]any{
-		"review_id": ctx.Param("id"),
+		"review_id": reviewID,
 		"reason":    sanitizeText(req.Reason),
 		"detail":    sanitizeText(req.Detail),
 	}
@@ -660,6 +729,13 @@ func (s *ReviewServer) HandleReport(ctx *gin.Context) {
 	}
 
 	if err := s.write.Insert("review_reports", []any{row}, nil); err != nil {
+		// A well-formed id for a review that does not exist violates the
+		// foreign key. That is the caller naming something that is not there,
+		// not a fault on this side.
+		if strings.Contains(err.Error(), "review_reports_review_id_fkey") {
+			ctx.JSON(http.StatusNotFound, gin.H{"error": "no such review"})
+			return
+		}
 		sendInternalError(ctx, "v1/reviews/:id/report", err)
 		return
 	}

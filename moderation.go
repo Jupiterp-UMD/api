@@ -266,13 +266,32 @@ func (m *ModerationServer) HandleDecide(ctx *gin.Context) {
 		}
 	}
 
-	m.recordDecision(reviewID, req, decidedBy, moderatorName, apply)
-
 	if !apply {
 		// Recorded, not acted on. The review still needs a person, so make
 		// that explicit rather than leaving it pending until the sweeper
 		// notices.
-		m.setStatus(reviewID, "escalated", decidedBy, "")
+		m.recordDecision(reviewID, req, decidedBy, moderatorName, false)
+
+		escalated, err := m.setStatus(reviewID, "escalated", decidedBy, "")
+		if err != nil {
+			sendInternalError(ctx, "v1/admin/reviews/:id", err)
+			return
+		}
+		if !escalated {
+			// A human decided it while the classifier was thinking. The
+			// opinion is still worth recording -- it is the shadow-mode
+			// comparison -- but there is nothing left to escalate, and
+			// alerting a channel about a review someone has already handled is
+			// how a moderation channel teaches people to ignore it.
+			log.Printf("moderation: shadow decision on %s arrived after a human decided", reviewID)
+			ctx.JSON(http.StatusOK, gin.H{
+				"status":  "already_decided",
+				"applied": false,
+				"note":    "recorded for comparison; a human had already decided this one",
+			})
+			return
+		}
+
 		m.triage.notifyDiscord(reviewID, req.Action,
 			derefFloat(req.Confidence), req.Categories,
 			shadowModeReason(req.Action, req.Confidence))
@@ -288,7 +307,34 @@ func (m *ModerationServer) HandleDecide(ctx *gin.Context) {
 	if req.Model != "" {
 		moderator = req.Model
 	}
-	m.setStatus(reviewID, targetStatus, moderator, req.Reason)
+
+	// Written before the audit row, so the audit row can state what happened
+	// rather than what was intended.
+	changed, err := m.setStatus(reviewID, targetStatus, moderator, req.Reason)
+	if err != nil {
+		m.recordDecision(reviewID, req, decidedBy, moderatorName, false)
+		sendInternalError(ctx, "v1/admin/reviews/:id", err)
+		return
+	}
+	if !changed {
+		// The guard refused it: something moved this review between the read
+		// above and this write. Whoever got there first decided it, and a
+		// caller told otherwise would have no way to notice.
+		m.recordDecision(reviewID, req, decidedBy, moderatorName, false)
+		var current []reviewRow
+		status := "unknown"
+		if selErr := m.write.Select("reviews", eqSelect("id", reviewID), &current); selErr == nil && len(current) > 0 {
+			status = current[0].Status
+		}
+		log.Printf("moderation: %s on %s lost a race; review is now %s", req.Action, reviewID, status)
+		ctx.JSON(http.StatusConflict, gin.H{
+			"error":  "another decision was applied first",
+			"status": status,
+		})
+		return
+	}
+
+	m.recordDecision(reviewID, req, decidedBy, moderatorName, true)
 
 	if req.Action == "reject" {
 		m.notifyRejection(review, req.Reason)
@@ -301,7 +347,11 @@ func (m *ModerationServer) HandleDecide(ctx *gin.Context) {
 	// Approve and reject are terminal: neither generates further mail, so the
 	// reviewer's address is dropped here. Escalate is not terminal -- the
 	// review is still headed for a decision that may need to notify them.
-	if req.Action == "approve" || req.Action == "reject" {
+	//
+	// Rejection is the exception: notifyRejection has to have delivered its
+	// message before the address goes, so it does the purge itself once the
+	// send is confirmed.
+	if req.Action == "approve" {
 		m.email.PurgeContact(reviewID)
 	}
 
@@ -339,7 +389,17 @@ func (m *ModerationServer) recordDecision(reviewID string, req DecisionRequest, 
 	}
 }
 
-func (m *ModerationServer) setStatus(reviewID, status, moderator, reason string) {
+// setStatus applies a decision, and reports whether it actually landed.
+//
+// The return value is the point. The state guard below is what stops a late
+// retry overturning a human's decision, but the result of that guard used to be
+// discarded: when a concurrent decision had already moved the review, the
+// update matched zero rows, the handler logged nothing, and the caller was told
+// `{"applied": true, "changed": true}` while `moderation_decisions` recorded a
+// decision that was never applied. On the one endpoint built to be idempotent
+// and state-guarded for a machine caller, the audit trail could disagree with
+// `reviews.status` and nothing would say so.
+func (m *ModerationServer) setStatus(reviewID, status, moderator, reason string) (bool, error) {
 	patch := map[string]any{
 		"status":       status,
 		"moderated_at": time.Now().UTC().Format(time.RFC3339),
@@ -352,9 +412,15 @@ func (m *ModerationServer) setStatus(reviewID, status, moderator, reason string)
 	params.Set("id", "eq."+reviewID)
 	params.Set("status", "in.(pending,escalated)")
 
-	if err := m.write.Update("reviews", params, patch, nil); err != nil {
-		log.Printf("moderation: setting %s on %s failed: %v", status, reviewID, err)
+	// The representation is how many rows the guard let through.
+	var updated []struct {
+		ID string `json:"id"`
 	}
+	if err := m.write.Update("reviews", params, patch, &updated); err != nil {
+		log.Printf("moderation: setting %s on %s failed: %v", status, reviewID, err)
+		return false, err
+	}
+	return len(updated) > 0, nil
 }
 
 // notifyRejection emails the reviewer, with an appeal route.
@@ -386,11 +452,28 @@ func (m *ModerationServer) notifyRejection(review reviewRow, reason string) {
 		"reason":          reason,
 	}); err != nil {
 		log.Printf("moderation: queueing rejection email failed: %v", err)
+		return
 	}
-	// Deliver before the purge below removes the address.
-	if _, err := m.email.Flush(5); err != nil {
+
+	// This review's queued mail specifically, not the oldest five in the
+	// outbox. `Flush(5)` orders by `next_attempt_at` ascending, so with a
+	// backlog the row just written is not in the batch -- and the purge that
+	// used to follow unconditionally then nulled its recipient, so `deliver`
+	// abandoned it. The reviewer got no rejection notice and no appeal route,
+	// which is the entire reason the `rejected` template exists.
+	sent, err := m.email.FlushFor(review.ID)
+	if err != nil {
 		log.Printf("moderation: flushing rejection email failed: %v", err)
+		return
 	}
+	if sent == 0 {
+		// Deferred by a provider cap, most likely. The address has to survive
+		// for the sweep to retry; PurgeSettledContacts collects it once the
+		// message is actually gone.
+		log.Printf("moderation: rejection email for %s deferred; address retained for retry", review.ID)
+		return
+	}
+	m.email.PurgeContact(review.ID)
 }
 
 /* ============================== reports ================================= */
@@ -432,13 +515,34 @@ func (m *ModerationServer) HandleSweep(ctx *gin.Context) {
 	// Scheduler's own alerting is enough to surface it.
 	failures := map[string]string{}
 
-	retried, escalated := m.triage.Sweep()
-	purged := m.triage.PurgeAbandoned()
+	// Every component reports. These two returned no error at all, so a failure
+	// inside them could not reach the `failures` map and the 207 this handler
+	// exists to send could never mention them -- the same gap, one level in,
+	// as the 200-on-everything it replaced.
+	retried, escalated, err := m.triage.Sweep()
+	if err != nil {
+		log.Printf("sweep: triage sweep failed: %v", err)
+		failures["triage_sweep"] = err.Error()
+	}
+
+	purged, err := m.triage.PurgeAbandoned()
+	if err != nil {
+		log.Printf("sweep: purging abandoned submissions failed: %v", err)
+		failures["purge_abandoned"] = err.Error()
+	}
 
 	sent, err := m.email.Flush(50)
 	if err != nil {
 		log.Printf("sweep: email flush failed: %v", err)
 		failures["email_flush"] = err.Error()
+	}
+
+	// After the flush, so a message delivered on this pass has its address
+	// collected on the same pass rather than an hour later.
+	contactsPurged, err := m.email.PurgeSettledContacts(200)
+	if err != nil {
+		log.Printf("sweep: purging settled contacts failed: %v", err)
+		failures["purge_contacts"] = err.Error()
 	}
 
 	// Scalar, not an array: `refresh_instructor_ratings` returns `integer` and
@@ -462,11 +566,27 @@ func (m *ModerationServer) HandleSweep(ctx *gin.Context) {
 		updated = *ratingsUpdated
 	}
 
+	// Nothing ever deleted from `rate_limit_counters`, so it grew a row per
+	// caller per action per window, forever. It would never have shown up in a
+	// query -- every read is an indexed lookup on a recent window -- only in
+	// storage, vacuum time and backup size.
+	var limitsPruned *int
+	if err := m.write.RPC("prune_rate_limits", map[string]any{}, &limitsPruned); err != nil {
+		log.Printf("sweep: pruning rate limit counters failed: %v", err)
+		failures["prune_rate_limits"] = err.Error()
+	}
+	prunedCounters := 0
+	if limitsPruned != nil {
+		prunedCounters = *limitsPruned
+	}
+
 	body := gin.H{
 		"ok":               len(failures) == 0,
 		"triage_retried":   retried,
 		"triage_escalated": escalated,
 		"purged":           purged,
+		"contacts_purged":  contactsPurged,
+		"limits_pruned":    prunedCounters,
 		"emails_sent":      sent,
 		"ratings_updated":  updated,
 	}
@@ -489,7 +609,7 @@ func (m *ModerationServer) HandleSweep(ctx *gin.Context) {
 // other read endpoint already enforces.
 type ReviewListArgs struct {
 	Limit  uint16 `form:"limit"  binding:"omitempty,min=1,max=500"`
-	Offset uint16 `form:"offset"`
+	Offset uint32 `form:"offset"`
 }
 
 func (client SupabaseClient) HandleListReviews(ctx *gin.Context) {
