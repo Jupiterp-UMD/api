@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -963,5 +964,80 @@ func TestOnlyASentMessageCountsAsSent(t *testing.T) {
 				"safe = %v; these have to agree or the address goes before the mail does",
 				tc.name, counted, tc.purgeOK)
 		}
+	}
+}
+
+/* ===================== email promises a real feature ==================== */
+
+// No template may offer to let a reviewer edit their review.
+//
+// The manage-key email said "Keep this key if you want to edit or withdraw it
+// later". Editing does not exist: there is no route for it, no UI, and it was
+// removed deliberately. Withdrawal did exist, but only as an endpoint nobody
+// could reach -- `DELETE /v1/reviews/:id` needs the review's id, and a reviewer
+// is never told it, so the key they were told to keep unlocked nothing.
+//
+// Both halves are fixed: the key now resolves the review on its own via
+// `GET /v1/reviews/manage`, and the email points at the page that uses it. This
+// pins the copy, because the failure mode is a promise in an email that no code
+// path can keep -- which nothing else in the test suite can see.
+func TestEmailsNeverPromiseEditing(t *testing.T) {
+	cfg := &Config{SiteBaseURL: "https://www.jupiterp.com", EmailFromName: "Jupiterp"}
+	// `\bedit` rather than a substring search, so "credit" does not trip it.
+	editRe := regexp.MustCompile(`(?i)\bedit`)
+
+	for _, template := range []string{"verify", "resend_verify", "manage_key", "rejected"} {
+		row := outboxRow{Template: template, Payload: map[string]any{
+			"instructor_name": "Shane Bolles Walsh",
+			"manage_key":      "example-key",
+			"token":           "example-token",
+			"reason":          "It did not meet the content policy.",
+		}}
+		_, html, text := renderTemplate(cfg, row)
+		for part, body := range map[string]string{"html": html, "text": text} {
+			if match := editRe.FindString(body); match != "" {
+				t.Errorf("the %s template's %s part offers %q; editing a review is not a "+
+					"feature this site has", template, part, match)
+			}
+		}
+	}
+}
+
+// And the manage-key email has to say where the key is used.
+//
+// A key with nowhere to use it is the same broken promise in a different shape,
+// which is exactly the state this email was in: it told the reader to keep a
+// credential and never named a page that accepts one.
+func TestManageKeyEmailLinksToTheWithdrawalPage(t *testing.T) {
+	const base = "https://www.jupiterp.com"
+	cfg := &Config{SiteBaseURL: base, EmailFromName: "Jupiterp"}
+	row := outboxRow{Template: "manage_key", Payload: map[string]any{
+		"instructor_name": "Shane Bolles Walsh",
+		"manage_key":      "example-key",
+	}}
+
+	subject, html, text := renderTemplate(cfg, row)
+	if subject == "" {
+		t.Error("no subject")
+	}
+
+	wantLink := base + "/review/withdraw"
+	for part, body := range map[string]string{"html": html, "text": text} {
+		if !strings.Contains(body, wantLink) {
+			t.Errorf("the %s part does not link to %s, so the key it tells the reader to "+
+				"keep has nowhere to be used", part, wantLink)
+		}
+		if !strings.Contains(body, "example-key") {
+			t.Errorf("the %s part does not contain the key itself", part)
+		}
+		if !strings.Contains(strings.ToLower(body), "withdraw") {
+			t.Errorf("the %s part never says what the key is for", part)
+		}
+	}
+
+	// The preheader is the grey line the inbox shows next to the subject, and
+	// it is the only part many people read before deciding to keep the mail.
+	if !strings.Contains(html, "only way to withdraw") {
+		t.Error("the preheader does not say the key is the only way to withdraw")
 	}
 }

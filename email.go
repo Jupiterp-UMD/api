@@ -551,23 +551,35 @@ func renderTemplate(cfg *Config, row outboxRow) (string, string, string) {
 		return "Confirm your Jupiterp review", html, text
 
 	case "manage_key":
+		// "withdraw", not "edit or withdraw".
+		//
+		// Editing does not exist -- there is no route for it and the feature was
+		// deliberately removed -- so the old copy promised a capability the site
+		// has never had. Withdrawal does exist, and now has a page, which this
+		// links to: a key with nowhere to use it is the same broken promise in a
+		// different shape.
 		name := htmlEscape(str("instructor_name"))
 		key := htmlEscape(str("manage_key"))
+		withdrawLink := cfg.SiteBaseURL + "/review/withdraw"
 
 		html := emailShell(
-			"Keep this key to edit or withdraw your review later.",
+			"Keep this key. It is the only way to withdraw your review later.",
 			"Your review is awaiting moderation",
 			para("Thanks for confirming your review of <strong>"+name+"</strong>.")+
-				para("Keep this key if you want to edit or withdraw it later:")+
+				para("Keep this key. It is the only way to withdraw your review later:")+
 				`<div class="jp-code" style="margin:0 0 14px 0;padding:14px 16px;background:`+colorBgAlt+
 				`;border:1px solid `+colorBorder+`;border-radius:8px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;`+
 				`font-size:14px;line-height:1.5;color:`+colorText+`;word-break:break-all;">`+key+`</div>`+
-				note("We cannot recover it for you, because we have no way to link it back to you."))
+				para(`To withdraw it, paste the key at <a href="`+withdrawLink+`" style="color:`+colorOrange+
+					`;">`+htmlEscape(withdrawLink)+`</a>. You will be shown the review before anything is removed.`)+
+				note("We cannot recover this key for you, because we have no way to link it back to you."))
 
 		text := "Thanks for confirming your review of " + str("instructor_name") + ". It is now awaiting moderation.\n\n" +
-			"Keep this key if you want to edit or withdraw it later:\n\n" +
+			"Keep this key. It is the only way to withdraw your review later:\n\n" +
 			"    " + str("manage_key") + "\n\n" +
-			"We cannot recover it for you, because we have no way to link it back to you.\n"
+			"To withdraw it, paste the key at:\n" + withdrawLink + "\n" +
+			"You will be shown the review before anything is removed.\n\n" +
+			"We cannot recover this key for you, because we have no way to link it back to you.\n"
 
 		return "Your Jupiterp review management key", html, text
 

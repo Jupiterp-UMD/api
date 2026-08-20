@@ -598,19 +598,22 @@ func (s *ReviewServer) emailManageKey(reviewID string, instructorID int64, manag
 
 // authorizeManage resolves a bearer manage key to the review it controls.
 //
-// The key is compared as a hash lookup rather than by fetching a candidate and
-// comparing strings, so there is no per-character timing signal and no way to
-// probe for which review ids exist.
+// The key alone identifies the review; the path id is not part of the lookup.
+//
+// It used to require both, which made withdrawal unreachable in practice: the
+// reviewer is given a manage key and never told the review's id -- not in the
+// verification response, not in the email -- so nobody holding a key could
+// name the row it unlocks. The endpoint worked and no caller could use it.
+//
+// Resolving by key alone is not a weakening. `edit_key_hash` is a SHA-256 of a
+// 256-bit random token, so it identifies exactly one row; a lookup on it is a
+// hash lookup with no per-character timing signal and no way to probe which
+// review ids exist. The id, when a caller supplies one, is checked against the
+// row afterwards rather than used to find it.
 func (s *ReviewServer) authorizeManage(ctx *gin.Context) (*reviewRow, bool) {
 	key := bearerToken(ctx)
 	if key == "" {
 		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "manage key required"})
-		return nil, false
-	}
-	// Same answer as a wrong key, so a malformed id is not a distinguishable
-	// response either -- and so it never reaches PostgREST as a bad uuid.
-	if !uuidRe.MatchString(ctx.Param("id")) {
-		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "not authorized for that review"})
 		return nil, false
 	}
 
@@ -631,13 +634,12 @@ func (s *ReviewServer) authorizeManage(ctx *gin.Context) (*reviewRow, bool) {
 
 	params := url.Values{}
 	params.Set("select", "*")
-	params.Set("id", "eq."+ctx.Param("id"))
 	params.Set("edit_key_hash", "eq."+hashToken(key))
 	params.Set("limit", "1")
 
 	var rows []reviewRow
 	if err := s.write.Select("reviews", params, &rows); err != nil {
-		sendInternalError(ctx, "v1/reviews/:id", err)
+		sendInternalError(ctx, "v1/reviews", err)
 		return nil, false
 	}
 	if len(rows) == 0 {
@@ -645,7 +647,56 @@ func (s *ReviewServer) authorizeManage(ctx *gin.Context) (*reviewRow, bool) {
 		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "not authorized for that review"})
 		return nil, false
 	}
-	return &rows[0], true
+	review := &rows[0]
+
+	// A caller that named an id has to have named the right one. Same answer as
+	// a bad key, so this cannot be used to test whether an id exists.
+	if id := ctx.Param("id"); id != "" && id != review.ID {
+		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "not authorized for that review"})
+		return nil, false
+	}
+	return review, true
+}
+
+// HandleManage describes the review a manage key controls.
+//
+// The confirmation step for withdrawal. Withdrawal is irreversible and the key
+// is the only thing tying a person to their review, so being shown which review
+// is about to be retracted -- before retracting it -- is the difference between
+// a usable control and a button people are afraid to press.
+//
+// Returns nothing that identifies the reviewer. The row is theirs already; the
+// point is to show them what they wrote, not to widen what the key can read.
+func (s *ReviewServer) HandleManage(ctx *gin.Context) {
+	review, ok := s.authorizeManage(ctx)
+	if !ok {
+		return
+	}
+
+	instructorName, instructorSlug := "", ""
+	var instructors []instructorRow
+	if err := s.write.Select("instructors",
+		eqSelect("id", fmt.Sprintf("%d", review.InstructorID)), &instructors); err == nil && len(instructors) > 0 {
+		instructorName = instructors[0].Name
+		instructorSlug = instructors[0].Slug
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{
+		"id":              review.ID,
+		"instructor":      instructorName,
+		"instructor_slug": instructorSlug,
+		"course_code":     review.CourseCode,
+		"term":            review.Term,
+		"rating":          review.Rating,
+		"title":           review.Title,
+		"body":            review.Body,
+		"status":          review.Status,
+		"submitted_at":    review.SubmittedAt,
+		// Whether the withdraw button should do anything. A review already
+		// withdrawn, or rejected, has nothing to retract.
+		"withdrawable": review.Status == "unverified" || review.Status == "pending" ||
+			review.Status == "escalated" || review.Status == "approved",
+	})
 }
 
 // HandleWithdraw retracts a review.
@@ -657,6 +708,14 @@ func (s *ReviewServer) authorizeManage(ctx *gin.Context) (*reviewRow, bool) {
 func (s *ReviewServer) HandleWithdraw(ctx *gin.Context) {
 	review, ok := s.authorizeManage(ctx)
 	if !ok {
+		return
+	}
+
+	// Idempotent. Mail clients prefetch, people double-click, and a second
+	// withdrawal should read as success rather than as an error about a review
+	// that is already in the state the caller wanted.
+	if review.Status == "withdrawn" {
+		ctx.JSON(http.StatusOK, gin.H{"status": "withdrawn", "changed": false})
 		return
 	}
 
@@ -677,7 +736,7 @@ func (s *ReviewServer) HandleWithdraw(ctx *gin.Context) {
 	// clearly wrong: the reviewer has just asked to be removed.
 	s.email.PurgeContact(review.ID)
 
-	ctx.JSON(http.StatusOK, gin.H{"status": "withdrawn"})
+	ctx.JSON(http.StatusOK, gin.H{"status": "withdrawn", "changed": true})
 }
 
 /* =============================== reporting ============================== */
