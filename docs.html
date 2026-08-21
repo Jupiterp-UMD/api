@@ -2,15 +2,26 @@
 <html>
     <head>
         <meta charset="utf-8">
+        <title>Jupiterp API Docs</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1">
         <link rel="icon" href="/favicon.svg?" type="image/svg+xml">
         <link rel="stylesheet" type="text/css" href="docs.css">
     </head>
     <body>
-        <h1 id="jupiterp-api-v0-docs-pre-release-">Jupiterp API v0 Docs (pre-release)</h1>
+        <h1 id="jupiterp-api-docs-pre-release-">Jupiterp API Docs (pre-release)</h1>
         <h2 id="introduction">Introduction</h2>
         <p>Welcome to the Jupiterp API, a free and open-source API to get detailed course data for the University of Maryland. Currently, the API is in pre-release phase and is unstable; expect breaking changes, but the information in these docs should be correct and up-to-date.</p>
         <p>For any questions or bugs, please contact <a href="mailto:admin@jupiterp.com">admin@jupiterp.com</a>.</p>
         <p>Feel free to view or contribute to the project <a href="https://www.github.com/jupiterp-umd/api">on GitHub</a>.</p>
+        <h2 id="versions">Versions</h2>
+        <p>Everything is served under <strong><code>/v1</code></strong>. Use it for new work.</p>
+        <p><strong><code>/v0</code> still works and is not going away.</strong> Every read endpoint documented here
+        answers on both prefixes, from the same handlers, returning the same bytes —
+        <code>/v0/courses</code> and <code>/v1/courses</code> are the same endpoint. Existing clients,
+        including <a href="https://www.npmjs.com/package/@jupiterp/jupiterp"><code>@jupiterp/jupiterp</code></a>
+        1.x, need no change and there is no migration deadline.</p>
+        <p>The two prefixes are held together by a parity check that compares every read
+        endpoint across both, so they cannot quietly drift apart.</p>
         <h2 id="endpoints">Endpoints</h2>
         <table>
         <thead>
@@ -22,51 +33,66 @@
         </thead>
         <tbody>
         <tr>
-        <td style="text-align:left"><code>/v0/</code></td>
+        <td style="text-align:left"><code>/v1/</code></td>
         <td style="text-align:left">Base endpoint</td>
-        <td style="text-align:left"><a href="#-v0-">jump</a></td>
+        <td style="text-align:left"><a href="#-v1-">jump</a></td>
         </tr>
         <tr>
-        <td style="text-align:left"><code>/v0/courses</code></td>
+        <td style="text-align:left"><code>/v1/courses</code></td>
         <td style="text-align:left">Get a list of courses with full course info</td>
-        <td style="text-align:left"><a href="#-v0-courses-">jump</a></td>
+        <td style="text-align:left"><a href="#-v1-courses-">jump</a></td>
         </tr>
         <tr>
-        <td style="text-align:left"><code>/v0/courses/minified</code></td>
+        <td style="text-align:left"><code>/v1/courses/minified</code></td>
         <td style="text-align:left">Get a list of courses with just the code and title for each</td>
-        <td style="text-align:left"><a href="#-v0-courses-minified-">jump</a></td>
+        <td style="text-align:left"><a href="#-v1-courses-minified-">jump</a></td>
         </tr>
         <tr>
-        <td style="text-align:left"><code>/v0/courses/withSections</code></td>
+        <td style="text-align:left"><code>/v1/courses/withSections</code></td>
         <td style="text-align:left">Get a list of courses, including section data for each course</td>
-        <td style="text-align:left"><a href="#-v0-courses-withsections-">jump</a></td>
+        <td style="text-align:left"><a href="#-v1-courses-withsections-">jump</a></td>
         </tr>
         <tr>
-        <td style="text-align:left"><code>/v0/sections</code></td>
+        <td style="text-align:left"><code>/v1/sections</code></td>
         <td style="text-align:left">Get a list of sections for courses</td>
-        <td style="text-align:left"><a href="#-v0-sections-">jump</a></td>
+        <td style="text-align:left"><a href="#-v1-sections-">jump</a></td>
         </tr>
         <tr>
-        <td style="text-align:left"><code>/v0/instructors</code></td>
+        <td style="text-align:left"><code>/v1/instructors</code></td>
         <td style="text-align:left">Get a list of instructors and their ratings</td>
-        <td style="text-align:left"><a href="#-v0-instructors-">jump</a></td>
+        <td style="text-align:left"><a href="#-v1-instructors-">jump</a></td>
         </tr>
         <tr>
-        <td style="text-align:left"><code>/v0/instructors/active</code></td>
+        <td style="text-align:left"><code>/v1/instructors/active</code></td>
         <td style="text-align:left">Get a list of instructors actively teaching a course</td>
-        <td style="text-align:left"><a href="#-v0-instructors-active-">jump</a></td>
+        <td style="text-align:left"><a href="#-v1-instructors-active-">jump</a></td>
         </tr>
         <tr>
-        <td style="text-align:left"><code>/v0/deptList</code></td>
+        <td style="text-align:left"><code>/v1/deptList</code></td>
         <td style="text-align:left">Get a list of 4-letter department codes</td>
-        <td style="text-align:left"><a href="#-v0-deptlist-">jump</a></td>
+        <td style="text-align:left"><a href="#-v1-deptlist-">jump</a></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>/v1/grades</code></td>
+        <td style="text-align:left">Get grade distributions for individual sections</td>
+        <td style="text-align:left"><a href="#-v1-grades-">jump</a></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>/v1/grades/summary</code></td>
+        <td style="text-align:left">Get grade distributions aggregated by course, term, or instructor</td>
+        <td style="text-align:left"><a href="#-v1-grades-summary-">jump</a></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>/v1/grades/terms</code></td>
+        <td style="text-align:left">Get the terms for which grade data is available</td>
+        <td style="text-align:left"><a href="#-v1-grades-terms-">jump</a></td>
         </tr>
         </tbody>
         </table>
-        <h3 id="-v0-"><code>/v0/</code></h3>
+        <h3 id="-v1-"><code>/v1/</code></h3>
         <p><a href="#endpoints">(back to endpoints)</a></p>
-        <p>This is the base endpoint for v0 of the Jupiterp API. It will simply return a HTTP StatusOK with some text to indicate that the Jupiterp API is online.</p>
-        <h3 id="-v0-courses-"><code>/v0/courses</code></h3>
+        <p>This is the base endpoint for the Jupiterp API. It will simply return a HTTP StatusOK with some text to indicate that the Jupiterp API is online.</p>
+        <h3 id="-v1-courses-"><code>/v1/courses</code></h3>
         <p><a href="#endpoints">(back to endpoints)</a></p>
         <p>Gets a list of courses that match the given query parameters. This endpoint does not return section information; for section info, use the <code>sections</code> endpoint listed below.</p>
         <h4 id="query-parameters">Query parameters</h4>
@@ -170,104 +196,106 @@
         </table>
         <h4 id="examples">Examples</h4>
         <h5 id="getting-multiple-specific-courses">Getting multiple specific courses</h5>
-        <p>Request: <code>GET http://api.jupiterp.com/v0/courses?courseCodes=CMSC131,MATH141</code></p>
+        <p>Request: <code>GET http://api.jupiterp.com/v1/courses?courseCodes=CMSC131,MATH141</code></p>
         <p>Response:</p>
-        <pre><code>[
-        {
-            <span class="hljs-string">"course_code"</span>: <span class="hljs-string">"CMSC131"</span>,
-            <span class="hljs-string">"name"</span>: <span class="hljs-string">"Object-Oriented Programming I"</span>,
-            <span class="hljs-string">"min_credits"</span>: <span class="hljs-number">4</span>,
-            <span class="hljs-string">"max_credits"</span>: null,
-            <span class="hljs-string">"gen_eds"</span>: null,
-            <span class="hljs-string">"conditions"</span>: [
-            <span class="hljs-string">"Corequisite: MATH140. "</span>,
-            <span class="hljs-string">"Credit only granted for: CMSC131, CMSC133 or CMSC141."</span>
-            ],
-            <span class="hljs-string">"description"</span>: <span class="hljs-comment">"Introduction to programming and computer science.</span>
-            Emphasizes understanding <span class="hljs-built_in">and</span> implementation of applications using
-            object-oriented techniques. Develops skills such <span class="hljs-keyword">as</span> program design <span class="hljs-built_in">and</span>
-            testing <span class="hljs-keyword">as</span> well <span class="hljs-keyword">as</span> implementation of programs using <span class="hljs-keyword">a</span> graphical IDE.
-            Programming done in Java.<span class="hljs-comment">"</span>
-        },
-        {
-            <span class="hljs-string">"course_code"</span>: <span class="hljs-string">"MATH141"</span>,
-            <span class="hljs-string">"name"</span>: <span class="hljs-string">"Calculus II"</span>,
-            <span class="hljs-string">"min_credits"</span>: <span class="hljs-number">4</span>,
-            <span class="hljs-string">"max_credits"</span>: null,
-            <span class="hljs-string">"gen_eds"</span>: null,
-            <span class="hljs-string">"conditions"</span>: [
-            <span class="hljs-string">"Prerequisite: Minimum grade of C- in MATH140."</span>
-            ],
-            <span class="hljs-string">"description"</span>: <span class="hljs-comment">"Continuation of MATH140, including techniques of</span>
-            integration, improper integrals, applications of integration (such <span class="hljs-keyword">as</span>
-            volumes, work, arc length, moments), inverse functions, exponential <span class="hljs-built_in">and</span>
-            logarithmic functions, sequences <span class="hljs-built_in">and</span> series.<span class="hljs-comment">"</span>
-        }
-        ]
-        </code></pre><h5 id="getting-courses-that-satisfy-gen-ed-requirements">Getting courses that satisfy Gen-Ed requirements</h5>
-        <p>Request: <code>GET http://api.jupiterp.com/v0/courses?genEds=DVUP,DSSP&amp;limit=2&amp;sortBy=courseCode.asc</code></p>
+<pre><code>[
+  {
+    &quot;course_code&quot;: &quot;CMSC131&quot;,
+    &quot;name&quot;: &quot;Object-Oriented Programming I&quot;,
+    &quot;min_credits&quot;: 4,
+    &quot;max_credits&quot;: null,
+    &quot;gen_eds&quot;: null,
+    &quot;conditions&quot;: [
+      &quot;Corequisite: MATH140. &quot;,
+      &quot;Credit only granted for: CMSC131, CMSC133 or CMSC141.&quot;
+    ],
+    &quot;description&quot;: &quot;Introduction to programming and computer science.
+    Emphasizes understanding and implementation of applications using
+    object-oriented techniques. Develops skills such as program design and
+    testing as well as implementation of programs using a graphical IDE.
+    Programming done in Java.&quot;
+  },
+  {
+    &quot;course_code&quot;: &quot;MATH141&quot;,
+    &quot;name&quot;: &quot;Calculus II&quot;,
+    &quot;min_credits&quot;: 4,
+    &quot;max_credits&quot;: null,
+    &quot;gen_eds&quot;: null,
+    &quot;conditions&quot;: [
+      &quot;Prerequisite: Minimum grade of C- in MATH140.&quot;
+    ],
+    &quot;description&quot;: &quot;Continuation of MATH140, including techniques of
+    integration, improper integrals, applications of integration (such as
+    volumes, work, arc length, moments), inverse functions, exponential and
+    logarithmic functions, sequences and series.&quot;
+  }
+]
+</code></pre>
+        <h5 id="getting-courses-that-satisfy-gen-ed-requirements">Getting courses that satisfy Gen-Ed requirements</h5>
+        <p>Request: <code>GET http://api.jupiterp.com/v1/courses?genEds=DVUP,DSSP&amp;limit=2&amp;sortBy=courseCode.asc</code></p>
         <p>Response:</p>
-        <pre><code>[
-        {
-            <span class="hljs-comment">"course_code"</span>: <span class="hljs-comment">"AAST351"</span>,
-            <span class="hljs-comment">"name"</span>: <span class="hljs-comment">"Asian Americans and Media"</span>,
-            <span class="hljs-comment">"min_credits"</span>: <span class="hljs-number">3</span>,
-            <span class="hljs-comment">"max_credits"</span>: null,
-            <span class="hljs-comment">"gen_eds"</span>: [
-            <span class="hljs-comment">"DSSP"</span>,
-            <span class="hljs-comment">"DVUP"</span>
-            ],
-            <span class="hljs-comment">"conditions"</span>: [
-            <span class="hljs-comment">"Credit only granted for: AAST351, AAST398M or AAST398N. "</span>,
-            <span class="hljs-comment">"Formerly: AAST398M, AAST398N."</span>
-            ],
-            <span class="hljs-comment">"description"</span>: <span class="hljs-comment">"From yellow peril invaders to model minority allies, Asian 
-            Americans have crafted their own dynamic cultural expressions in a number 
-            of media from film, television, and music to fashion, sports, and food that
-            reveal and contest the contradictions of the U.S. nation-state. Asian
-            American culture also uniquely sits at the nexus of immigration flows and
-            digital technologies, providing a transnational lens to view the US place
-            in the world. This advanced course, then, will introduce students to the
-            study and practice of Asian American culture as multiple , hybrid, and
-            heterogeneous. It will do so through three sections: section one will
-            introduce students to classical, cultural, and media concepts as well as
-            relevant keywords outlined by Asian American Studies scholars; section two
-            will review the work of Asian American cultural theorists; section three
-            will focus on analyses of particular Asian American cultural productions.
-            In doing so, students will gain an understanding of the shifting and
-            interlocking tensions among the local, the national, and the global that
-            form the cultural geographies of Asian America."</span>
-        },
-        {
-            <span class="hljs-comment">"course_code"</span>: <span class="hljs-comment">"AMST320"</span>,
-            <span class="hljs-comment">"name"</span>: <span class="hljs-comment">"(Dis)ability in American Film"</span>,
-            <span class="hljs-comment">"min_credits"</span>: <span class="hljs-number">3</span>,
-            <span class="hljs-comment">"max_credits"</span>: null,
-            <span class="hljs-comment">"gen_eds"</span>: [
-            <span class="hljs-comment">"DSHU"</span>,
-            <span class="hljs-comment">"DSSP"</span>,
-            <span class="hljs-comment">"DVUP"</span>
-            ],
-            <span class="hljs-comment">"conditions"</span>: [
-            <span class="hljs-comment">"Credit only granted for: AMST320 or AMST328X. "</span>,
-            <span class="hljs-comment">"Formerly: AMST328X."</span>
-            ],
-            <span class="hljs-comment">"description"</span>: <span class="hljs-comment">"Explores the connection between film and disability
-            through an analysis of independent and mainstream American films in various
-            film genres. Specifically, we will consider how these film representations
-            reflect and/or challenge the shifting social perspectives of disability
-            over the 20th and 21st centuries.  Beginning with the presentation of
-            disability as theatrical spectacle in the traveling sideshow and early
-            cinema, we will work our way through film history to develop an
-            understanding of our society's complicated relationship with disability."</span>
-        }
-        ]
-        </code></pre><h3 id="-v0-courses-minified-"><code>/v0/courses/minified</code></h3>
+<pre><code>[
+  {
+    &quot;course_code&quot;: &quot;AAST351&quot;,
+    &quot;name&quot;: &quot;Asian Americans and Media&quot;,
+    &quot;min_credits&quot;: 3,
+    &quot;max_credits&quot;: null,
+    &quot;gen_eds&quot;: [
+      &quot;DSSP&quot;,
+      &quot;DVUP&quot;
+    ],
+    &quot;conditions&quot;: [
+      &quot;Credit only granted for: AAST351, AAST398M or AAST398N. &quot;,
+      &quot;Formerly: AAST398M, AAST398N.&quot;
+    ],
+    &quot;description&quot;: &quot;From yellow peril invaders to model minority allies, Asian 
+    Americans have crafted their own dynamic cultural expressions in a number 
+    of media from film, television, and music to fashion, sports, and food that
+    reveal and contest the contradictions of the U.S. nation-state. Asian
+    American culture also uniquely sits at the nexus of immigration flows and
+    digital technologies, providing a transnational lens to view the US place
+    in the world. This advanced course, then, will introduce students to the
+    study and practice of Asian American culture as multiple , hybrid, and
+    heterogeneous. It will do so through three sections: section one will
+    introduce students to classical, cultural, and media concepts as well as
+    relevant keywords outlined by Asian American Studies scholars; section two
+    will review the work of Asian American cultural theorists; section three
+    will focus on analyses of particular Asian American cultural productions.
+    In doing so, students will gain an understanding of the shifting and
+    interlocking tensions among the local, the national, and the global that
+    form the cultural geographies of Asian America.&quot;
+  },
+  {
+    &quot;course_code&quot;: &quot;AMST320&quot;,
+    &quot;name&quot;: &quot;(Dis)ability in American Film&quot;,
+    &quot;min_credits&quot;: 3,
+    &quot;max_credits&quot;: null,
+    &quot;gen_eds&quot;: [
+      &quot;DSHU&quot;,
+      &quot;DSSP&quot;,
+      &quot;DVUP&quot;
+    ],
+    &quot;conditions&quot;: [
+      &quot;Credit only granted for: AMST320 or AMST328X. &quot;,
+      &quot;Formerly: AMST328X.&quot;
+    ],
+    &quot;description&quot;: &quot;Explores the connection between film and disability
+    through an analysis of independent and mainstream American films in various
+    film genres. Specifically, we will consider how these film representations
+    reflect and/or challenge the shifting social perspectives of disability
+    over the 20th and 21st centuries.  Beginning with the presentation of
+    disability as theatrical spectacle in the traveling sideshow and early
+    cinema, we will work our way through film history to develop an
+    understanding of our society's complicated relationship with disability.&quot;
+  }
+]
+</code></pre>
+        <h3 id="-v1-courses-minified-"><code>/v1/courses/minified</code></h3>
         <p><a href="#endpoints">(back to endpoints)</a></p>
-        <p>Gets a minified list of courses that satisfy the given parameters. Takes the same parameters as the <code>/v0/courses</code> endpoint, but returns only the course code and title.</p>
-        <h4 id="query-parameters">Query parameters</h4>
-        <p>Same as the parameters for <code>/v0/courses</code>; see <a href="#-v0-courses-">here</a>.</p>
-        <h4 id="output">Output</h4>
+        <p>Gets a minified list of courses that satisfy the given parameters. Takes the same parameters as the <code>/v1/courses</code> endpoint, but returns only the course code and title.</p>
+        <h4 id="query-parameters-1">Query parameters</h4>
+        <p>Same as the parameters for <code>/v1/courses</code>; see <a href="#-v1-courses-">here</a>.</p>
+        <h4 id="output-1">Output</h4>
         <table>
         <thead>
         <tr>
@@ -289,28 +317,29 @@
         </tr>
         </tbody>
         </table>
-        <h4 id="examples">Examples</h4>
+        <h4 id="examples-1">Examples</h4>
         <h5 id="getting-courses-with-a-specific-prefix">Getting courses with a specific prefix</h5>
-        <p>Request: <code>GET http://api.jupiterp.com/v0/courses/minified?prefix=ASTR4&amp;sortBy=name.asc</code></p>
+        <p>Request: <code>GET http://api.jupiterp.com/v1/courses/minified?prefix=ASTR4&amp;sortBy=name.asc</code></p>
         <p>Response:</p>
-        <pre><code>[
-        {
-            <span class="hljs-attr">"course_code"</span>: <span class="hljs-string">"ASTR422"</span>,
-            <span class="hljs-attr">"name"</span>: <span class="hljs-string">"Cosmology"</span>
-        },
-        {
-            <span class="hljs-attr">"course_code"</span>: <span class="hljs-string">"ASTR421"</span>,
-            <span class="hljs-attr">"name"</span>: <span class="hljs-string">"Galaxies"</span>
-        },
-        {
-            <span class="hljs-attr">"course_code"</span>: <span class="hljs-string">"ASTR498"</span>,
-            <span class="hljs-attr">"name"</span>: <span class="hljs-string">"Special Problems in Astronomy"</span>
-        }
-        ]
-        </code></pre><h3 id="-v0-courses-withsections-"><code>/v0/courses/withSections</code></h3>
+<pre><code>[
+  {
+    &quot;course_code&quot;: &quot;ASTR422&quot;,
+    &quot;name&quot;: &quot;Cosmology&quot;
+  },
+  {
+    &quot;course_code&quot;: &quot;ASTR421&quot;,
+    &quot;name&quot;: &quot;Galaxies&quot;
+  },
+  {
+    &quot;course_code&quot;: &quot;ASTR498&quot;,
+    &quot;name&quot;: &quot;Special Problems in Astronomy&quot;
+  }
+]
+</code></pre>
+        <h3 id="-v1-courses-withsections-"><code>/v1/courses/withSections</code></h3>
         <p><a href="#endpoints">(back to endpoints)</a></p>
         <p>Gets a list of full courses data and associated sections data. Each returned course also contains a (potentially-empty) list of sections for that course.</p>
-        <h4 id="query-parameters">Query parameters</h4>
+        <h4 id="query-parameters-2">Query parameters</h4>
         <table>
         <thead>
         <tr>
@@ -377,7 +406,7 @@
         </tr>
         </tbody>
         </table>
-        <h4 id="output">Output</h4>
+        <h4 id="output-2">Output</h4>
         <table>
         <thead>
         <tr>
@@ -425,65 +454,66 @@
         <tr>
         <td style="text-align:left"><code>sections</code></td>
         <td style="text-align:center">Section[]</td>
-        <td style="text-align:left">A list of <code>Section</code>s. A <code>Section</code> consists of the fields described in the output of <code>/v0/sections</code> (see <a href="#-v0-sections-">here</a>)</td>
+        <td style="text-align:left">A list of <code>Section</code>s. A <code>Section</code> consists of the fields described in the output of <code>/v1/sections</code> (see <a href="#-v1-sections-">here</a>)</td>
         </tr>
         </tbody>
         </table>
-        <h4 id="examples">Examples</h4>
+        <h4 id="examples-2">Examples</h4>
         <h5 id="getting-a-course-with-sections-data">Getting a course with sections data</h5>
-        <p>Request: <code>GET http://api.jupiterp.com/v0/courses/withSections?courseCodes=CMSC433</code></p>
+        <p>Request: <code>GET http://api.jupiterp.com/v1/courses/withSections?courseCodes=CMSC433</code></p>
         <p>Response:</p>
-        <pre><code>[
-        {
-            <span class="hljs-string">"course_code"</span>: <span class="hljs-string">"CMSC433"</span>,
-            <span class="hljs-string">"name"</span>: <span class="hljs-string">"Programming Language Technologies and Paradigms"</span>,
-            <span class="hljs-string">"min_credits"</span>: <span class="hljs-number">3</span>,
-            <span class="hljs-string">"max_credits"</span>: null,
-            <span class="hljs-string">"gen_eds"</span>: null,
-            <span class="hljs-string">"conditions"</span>: [
-            <span class="hljs-string">"Prerequisite: Minimum grade of C- in CMSC330; or must be in the
-            (Computer Science (Doctoral), Computer Science (Master's)) program. "</span>,
-            <span class="hljs-string">"Restriction: Permission of CMNS-Computer Science department."</span>
-            ],
-            <span class="hljs-string">"description"</span>: <span class="hljs-string">"Programming language technologies (e.g., object-oriented
-            programming), their implementations and use in software design and
-            implementation."</span>,
-            <span class="hljs-string">"sections"</span>: [
-            {
-                <span class="hljs-string">"holdfile"</span>: <span class="hljs-number">0</span>,
-                <span class="hljs-string">"meetings"</span>: [
-                <span class="hljs-string">"TuTh-11:00am-12:15pm-CSI-1115"</span>
-                ],
-                <span class="hljs-string">"sec_code"</span>: <span class="hljs-string">"0101"</span>,
-                <span class="hljs-string">"waitlist"</span>: <span class="hljs-number">3</span>,
-                <span class="hljs-string">"open_seats"</span>: <span class="hljs-number">0</span>,
-                <span class="hljs-string">"course_code"</span>: <span class="hljs-string">"CMSC433"</span>,
-                <span class="hljs-string">"instructors"</span>: [
-                <span class="hljs-string">"Anwar Mamat"</span>
-                ],
-                <span class="hljs-string">"total_seats"</span>: <span class="hljs-number">140</span>
-            },
-            {
-                <span class="hljs-string">"holdfile"</span>: null,
-                <span class="hljs-string">"meetings"</span>: [
-                <span class="hljs-string">"TuTh-3:30pm-4:45pm-IRB-0318"</span>
-                ],
-                <span class="hljs-string">"sec_code"</span>: <span class="hljs-string">"0201"</span>,
-                <span class="hljs-string">"waitlist"</span>: <span class="hljs-number">0</span>,
-                <span class="hljs-string">"open_seats"</span>: <span class="hljs-number">7</span>,
-                <span class="hljs-string">"course_code"</span>: <span class="hljs-string">"CMSC433"</span>,
-                <span class="hljs-string">"instructors"</span>: [
-                <span class="hljs-string">"Anwar Mamat"</span>
-                ],
-                <span class="hljs-string">"total_seats"</span>: <span class="hljs-number">50</span>
-            }
-            ]
-        }
-        ]
-        </code></pre><h3 id="-v0-sections-"><code>/v0/sections</code></h3>
+<pre><code>[
+  {
+    &quot;course_code&quot;: &quot;CMSC433&quot;,
+    &quot;name&quot;: &quot;Programming Language Technologies and Paradigms&quot;,
+    &quot;min_credits&quot;: 3,
+    &quot;max_credits&quot;: null,
+    &quot;gen_eds&quot;: null,
+    &quot;conditions&quot;: [
+      &quot;Prerequisite: Minimum grade of C- in CMSC330; or must be in the
+      (Computer Science (Doctoral), Computer Science (Master's)) program. &quot;,
+      &quot;Restriction: Permission of CMNS-Computer Science department.&quot;
+    ],
+    &quot;description&quot;: &quot;Programming language technologies (e.g., object-oriented
+    programming), their implementations and use in software design and
+    implementation.&quot;,
+    &quot;sections&quot;: [
+      {
+        &quot;holdfile&quot;: 0,
+        &quot;meetings&quot;: [
+          &quot;TuTh-11:00am-12:15pm-CSI-1115&quot;
+        ],
+        &quot;sec_code&quot;: &quot;0101&quot;,
+        &quot;waitlist&quot;: 3,
+        &quot;open_seats&quot;: 0,
+        &quot;course_code&quot;: &quot;CMSC433&quot;,
+        &quot;instructors&quot;: [
+          &quot;Anwar Mamat&quot;
+        ],
+        &quot;total_seats&quot;: 140
+      },
+      {
+        &quot;holdfile&quot;: null,
+        &quot;meetings&quot;: [
+          &quot;TuTh-3:30pm-4:45pm-IRB-0318&quot;
+        ],
+        &quot;sec_code&quot;: &quot;0201&quot;,
+        &quot;waitlist&quot;: 0,
+        &quot;open_seats&quot;: 7,
+        &quot;course_code&quot;: &quot;CMSC433&quot;,
+        &quot;instructors&quot;: [
+          &quot;Anwar Mamat&quot;
+        ],
+        &quot;total_seats&quot;: 50
+      }
+    ]
+  }
+]
+</code></pre>
+        <h3 id="-v1-sections-"><code>/v1/sections</code></h3>
         <p><a href="#endpoints">(back to endpoints)</a></p>
-        <p>Get sections for specific courses, or for all courses that match a course code prefix. Note that some courses don&#39;t have any sections; for example, most independent research courses, like ASTR498, will not return any sections.</p>
-        <h4 id="query-parameters">Query parameters</h4>
+        <p>Get sections for specific courses, or for all courses that match a course code prefix. Note that some courses don't have any sections; for example, most independent research courses, like ASTR498, will not return any sections.</p>
+        <h4 id="query-parameters-3">Query parameters</h4>
         <table>
         <thead>
         <tr>
@@ -535,7 +565,7 @@
         </tr>
         </tbody>
         </table>
-        <h4 id="output">Output</h4>
+        <h4 id="output-3">Output</h4>
         <table>
         <thead>
         <tr>
@@ -587,44 +617,45 @@
         </tr>
         </tbody>
         </table>
-        <h4 id="examples">Examples</h4>
+        <h4 id="examples-3">Examples</h4>
         <h5 id="getting-all-sections-for-a-course">Getting all sections for a course</h5>
-        <p>Request: <code>GET http://api.jupiterp.com/v0/sections?courseCodes=CMSC433</code></p>
+        <p>Request: <code>GET http://api.jupiterp.com/v1/sections?courseCodes=CMSC433</code></p>
         <p>Response:</p>
-        <pre><code>[
-        {
-            <span class="hljs-attr">"course_code"</span>: <span class="hljs-string">"CMSC433"</span>,
-            <span class="hljs-attr">"sec_code"</span>: <span class="hljs-string">"0101"</span>,
-            <span class="hljs-attr">"instructors"</span>: [
-            <span class="hljs-string">"Anwar Mamat"</span>
-            ],
-            <span class="hljs-attr">"meetings"</span>: [
-            <span class="hljs-string">"TuTh-11:00am-12:15pm-CSI-1115"</span>
-            ],
-            <span class="hljs-attr">"open_seats"</span>: <span class="hljs-number">0</span>,
-            <span class="hljs-attr">"total_seats"</span>: <span class="hljs-number">140</span>,
-            <span class="hljs-attr">"waitlist"</span>: <span class="hljs-number">7</span>,
-            <span class="hljs-attr">"holdfile"</span>: <span class="hljs-number">0</span>
-        },
-        {
-            <span class="hljs-attr">"course_code"</span>: <span class="hljs-string">"CMSC433"</span>,
-            <span class="hljs-attr">"sec_code"</span>: <span class="hljs-string">"0201"</span>,
-            <span class="hljs-attr">"instructors"</span>: [
-            <span class="hljs-string">"Anwar Mamat"</span>
-            ],
-            <span class="hljs-attr">"meetings"</span>: [
-            <span class="hljs-string">"TuTh-3:30pm-4:45pm-IRB-0318"</span>
-            ],
-            <span class="hljs-attr">"open_seats"</span>: <span class="hljs-number">15</span>,
-            <span class="hljs-attr">"total_seats"</span>: <span class="hljs-number">50</span>,
-            <span class="hljs-attr">"waitlist"</span>: <span class="hljs-number">0</span>,
-            <span class="hljs-attr">"holdfile"</span>: <span class="hljs-literal">null</span>
-        }
-        ]
-        </code></pre><h3 id="-v0-instructors-"><code>/v0/instructors</code></h3>
+<pre><code>[
+  {
+    &quot;course_code&quot;: &quot;CMSC433&quot;,
+    &quot;sec_code&quot;: &quot;0101&quot;,
+    &quot;instructors&quot;: [
+      &quot;Anwar Mamat&quot;
+    ],
+    &quot;meetings&quot;: [
+      &quot;TuTh-11:00am-12:15pm-CSI-1115&quot;
+    ],
+    &quot;open_seats&quot;: 0,
+    &quot;total_seats&quot;: 140,
+    &quot;waitlist&quot;: 7,
+    &quot;holdfile&quot;: 0
+  },
+  {
+    &quot;course_code&quot;: &quot;CMSC433&quot;,
+    &quot;sec_code&quot;: &quot;0201&quot;,
+    &quot;instructors&quot;: [
+      &quot;Anwar Mamat&quot;
+    ],
+    &quot;meetings&quot;: [
+      &quot;TuTh-3:30pm-4:45pm-IRB-0318&quot;
+    ],
+    &quot;open_seats&quot;: 15,
+    &quot;total_seats&quot;: 50,
+    &quot;waitlist&quot;: 0,
+    &quot;holdfile&quot;: null
+  }
+]
+</code></pre>
+        <h3 id="-v1-instructors-"><code>/v1/instructors</code></h3>
         <p><a href="#endpoints">(back to endpoints)</a></p>
         <p>Get a list of all instructors and their average ratings, including instructors not actively teaching any courses.</p>
-        <h4 id="query-parameters">Query parameters</h4>
+        <h4 id="query-parameters-4">Query parameters</h4>
         <table>
         <thead>
         <tr>
@@ -641,8 +672,23 @@
         </tr>
         <tr>
         <td style="text-align:left"><code>instructorSlugs</code> (optional)</td>
-        <td style="text-align:left">A comma-separated list of instructor slugs to get results for; slugs are the internal identifier used to distinguish an instructor and are unique to each instructor. See PlanetTerp API spec for more info. Cannot set both <code>instructorNames</code> and <code>instructorSlugs</code>.</td>
-        <td style="text-align:left"><code>instructorSlugs=testudo,pines</code></td>
+        <td style="text-align:left">A comma-separated list of instructor slugs to get results for; slugs are the internal identifier used to distinguish an instructor and are unique to each instructor. Cannot set both <code>instructorNames</code> and <code>instructorSlugs</code>.</td>
+        <td style="text-align:left"><code>instructorSlugs=shane-walsh,darryll-pines</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>nameSearch</code> (optional)</td>
+        <td style="text-align:left">Case-insensitive substring match on instructor name. Matched against a normalized form of the name, so accents and punctuation are ignored on both sides: <code>obrien</code> matches &quot;O'Brien&quot; and <code>jose</code> matches &quot;José&quot;.</td>
+        <td style="text-align:left"><code>nameSearch=walsh</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>activeOnly</code> (optional)</td>
+        <td style="text-align:left">If true, only returns instructors currently teaching at least one section.</td>
+        <td style="text-align:left"><code>activeOnly=true</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>count</code> (optional)</td>
+        <td style="text-align:left">If true, the total number of matching records is returned in the <code>Content-Range</code> response header (<code>0-49/4812</code>). Costs an extra aggregate over the filtered set, so it is off by default.</td>
+        <td style="text-align:left"><code>count=true</code></td>
         </tr>
         <tr>
         <td style="text-align:left"><code>ratings</code> (optional)</td>
@@ -666,7 +712,7 @@
         </tr>
         </tbody>
         </table>
-        <h4 id="output">Output</h4>
+        <h4 id="output-4">Output</h4>
         <table>
         <thead>
         <tr>
@@ -684,7 +730,7 @@
         <tr>
         <td style="text-align:left"><code>name</code></td>
         <td style="text-align:center">string</td>
-        <td style="text-align:left">The instructor&#39;s name as listed on PlanetTerp</td>
+        <td style="text-align:left">The instructor's name as listed on PlanetTerp</td>
         </tr>
         <tr>
         <td style="text-align:left"><code>average_rating</code></td>
@@ -693,81 +739,83 @@
         </tr>
         </tbody>
         </table>
-        <h4 id="examples">Examples</h4>
+        <h4 id="examples-4">Examples</h4>
         <h5 id="getting-high-rated-non-5-star-instructors">Getting high-rated, non-5 star instructors</h5>
-        <p>Request: <code>GET http://api.jupiterp.com/v0/instructors?ratings=gt.4.5&amp;ratings=lt.5&amp;limit=5&amp;sortBy=average_rating.desc,name.desc</code></p>
+        <p>Request: <code>GET http://api.jupiterp.com/v1/instructors?ratings=gt.4.5&amp;ratings=lt.5&amp;limit=5&amp;sortBy=average_rating.desc,name.desc</code></p>
         <p>Response:</p>
-        <pre><code>[
-        {
-            <span class="hljs-attr">"slug"</span>: <span class="hljs-string">"gramlich_meredith"</span>,
-            <span class="hljs-attr">"name"</span>: <span class="hljs-string">"Meredith Gramlich"</span>,
-            <span class="hljs-attr">"average_rating"</span>: <span class="hljs-number">4.9667</span>
-        },
-        {
-            <span class="hljs-attr">"slug"</span>: <span class="hljs-string">"cropper"</span>,
-            <span class="hljs-attr">"name"</span>: <span class="hljs-string">"Maureen Cropper"</span>,
-            <span class="hljs-attr">"average_rating"</span>: <span class="hljs-number">4.9474</span>
-        },
-        {
-            <span class="hljs-attr">"slug"</span>: <span class="hljs-string">"gruber_sean"</span>,
-            <span class="hljs-attr">"name"</span>: <span class="hljs-string">"Sean Gruber"</span>,
-            <span class="hljs-attr">"average_rating"</span>: <span class="hljs-number">4.9398</span>
-        },
-        {
-            <span class="hljs-attr">"slug"</span>: <span class="hljs-string">"o’brien"</span>,
-            <span class="hljs-attr">"name"</span>: <span class="hljs-string">"Terrence O’Brien"</span>,
-            <span class="hljs-attr">"average_rating"</span>: <span class="hljs-number">4.9375</span>
-        },
-        {
-            <span class="hljs-attr">"slug"</span>: <span class="hljs-string">"zomback"</span>,
-            <span class="hljs-attr">"name"</span>: <span class="hljs-string">"Jenna Zomback"</span>,
-            <span class="hljs-attr">"average_rating"</span>: <span class="hljs-number">4.9355</span>
-        }
-        ]
-        </code></pre><h3 id="-v0-instructors-active-"><code>/v0/instructors/active</code></h3>
+<pre><code>[
+  {
+    &quot;slug&quot;: &quot;gramlich_meredith&quot;,
+    &quot;name&quot;: &quot;Meredith Gramlich&quot;,
+    &quot;average_rating&quot;: 4.9667
+  },
+  {
+    &quot;slug&quot;: &quot;cropper&quot;,
+    &quot;name&quot;: &quot;Maureen Cropper&quot;,
+    &quot;average_rating&quot;: 4.9474
+  },
+  {
+    &quot;slug&quot;: &quot;gruber_sean&quot;,
+    &quot;name&quot;: &quot;Sean Gruber&quot;,
+    &quot;average_rating&quot;: 4.9398
+  },
+  {
+    &quot;slug&quot;: &quot;o’brien&quot;,
+    &quot;name&quot;: &quot;Terrence O’Brien&quot;,
+    &quot;average_rating&quot;: 4.9375
+  },
+  {
+    &quot;slug&quot;: &quot;zomback&quot;,
+    &quot;name&quot;: &quot;Jenna Zomback&quot;,
+    &quot;average_rating&quot;: 4.9355
+  }
+]
+</code></pre>
+        <h3 id="-v1-instructors-active-"><code>/v1/instructors/active</code></h3>
         <p><a href="#endpoints">(back to endpoints)</a></p>
         <p>Get all instructors that are currently teaching a course, as listed on Testudo.</p>
-        <h4 id="query-parameters">Query Parameters</h4>
-        <p>Same as <code>/v0/instructors</code>; see <a href="#-v0-instructors-">here</a>.</p>
-        <h4 id="output">Output</h4>
-        <p>Same as <code>/v0/instructors</code>; see <a href="#-v0-instructors-">here</a>.</p>
-        <h4 id="examples">Examples</h4>
+        <h4 id="query-parameters-5">Query Parameters</h4>
+        <p>Same as <code>/v1/instructors</code>; see <a href="#-v1-instructors-">here</a>.</p>
+        <h4 id="output-5">Output</h4>
+        <p>Same as <code>/v1/instructors</code>; see <a href="#-v1-instructors-">here</a>.</p>
+        <h4 id="examples-5">Examples</h4>
         <h5 id="getting-instructors-currently-teaching-a-course">Getting instructors currently teaching a course</h5>
-        <p>Request: <code>GET http://api.jupiterp.com/v0/instructors/active?limit=5</code></p>
+        <p>Request: <code>GET http://api.jupiterp.com/v1/instructors/active?limit=5</code></p>
         <p>Response:</p>
-        <pre><code>[
-        {
-            <span class="hljs-attr">"slug"</span>: <span class="hljs-string">"abadi_daniel"</span>,
-            <span class="hljs-attr">"name"</span>: <span class="hljs-string">"Daniel Abadi"</span>,
-            <span class="hljs-attr">"average_rating"</span>: <span class="hljs-number">3.122</span>
-        },
-        {
-            <span class="hljs-attr">"slug"</span>: <span class="hljs-string">"abasi"</span>,
-            <span class="hljs-attr">"name"</span>: <span class="hljs-string">"Ali Abasi"</span>,
-            <span class="hljs-attr">"average_rating"</span>: <span class="hljs-literal">null</span>
-        },
-        {
-            <span class="hljs-attr">"slug"</span>: <span class="hljs-string">"abbasi"</span>,
-            <span class="hljs-attr">"name"</span>: <span class="hljs-string">"Hossein Abbasi"</span>,
-            <span class="hljs-attr">"average_rating"</span>: <span class="hljs-number">3.7791</span>
-        },
-        {
-            <span class="hljs-attr">"slug"</span>: <span class="hljs-string">"abdul-alim"</span>,
-            <span class="hljs-attr">"name"</span>: <span class="hljs-string">"Jamaal Abdul-Alim"</span>,
-            <span class="hljs-attr">"average_rating"</span>: <span class="hljs-number">3.25</span>
-        },
-        {
-            <span class="hljs-attr">"slug"</span>: <span class="hljs-string">"abioye"</span>,
-            <span class="hljs-attr">"name"</span>: <span class="hljs-string">"Victor Abioye"</span>,
-            <span class="hljs-attr">"average_rating"</span>: <span class="hljs-literal">null</span>
-        }
-        ]
-        </code></pre><h3 id="-v0-deptlist-"><code>/v0/deptList</code></h3>
+<pre><code>[
+  {
+    &quot;slug&quot;: &quot;abadi_daniel&quot;,
+    &quot;name&quot;: &quot;Daniel Abadi&quot;,
+    &quot;average_rating&quot;: 3.122
+  },
+  {
+    &quot;slug&quot;: &quot;abasi&quot;,
+    &quot;name&quot;: &quot;Ali Abasi&quot;,
+    &quot;average_rating&quot;: null
+  },
+  {
+    &quot;slug&quot;: &quot;abbasi&quot;,
+    &quot;name&quot;: &quot;Hossein Abbasi&quot;,
+    &quot;average_rating&quot;: 3.7791
+  },
+  {
+    &quot;slug&quot;: &quot;abdul-alim&quot;,
+    &quot;name&quot;: &quot;Jamaal Abdul-Alim&quot;,
+    &quot;average_rating&quot;: 3.25
+  },
+  {
+    &quot;slug&quot;: &quot;abioye&quot;,
+    &quot;name&quot;: &quot;Victor Abioye&quot;,
+    &quot;average_rating&quot;: null
+  }
+]
+</code></pre>
+        <h3 id="-v1-deptlist-"><code>/v1/deptList</code></h3>
         <p><a href="#endpoints">(back to endpoints)</a></p>
         <p>Get a list of 4-letter department codes.</p>
-        <h4 id="query-parameters">Query parameters</h4>
+        <h4 id="query-parameters-6">Query parameters</h4>
         <p>None</p>
-        <h4 id="output">Output</h4>
+        <h4 id="output-6">Output</h4>
         <table>
         <thead>
         <tr>
@@ -789,6 +837,661 @@
         </tr>
         </tbody>
         </table>
+        <h3 id="-v1-grades-"><code>/v1/grades</code></h3>
+        <p><a href="#endpoints">(back to endpoints)</a></p>
+        <p>Gets grade distributions for individual course sections, as released by the University Registrar under the Maryland Public Information Act. Data covers fall and spring terms from Fall 2010 through Spring 2026; winter and summer terms were not released.</p>
+        <p>For counts aggregated across sections, terms, or instructors, use the <code>summary</code> endpoint below.</p>
+        <h4 id="query-parameters-7">Query parameters</h4>
+        <table>
+        <thead>
+        <tr>
+        <th style="text-align:left">param</th>
+        <th style="text-align:left">description</th>
+        <th style="text-align:left">example</th>
+        </tr>
+        </thead>
+        <tbody>
+        <tr>
+        <td style="text-align:left"><code>courseCodes</code> (optional)</td>
+        <td style="text-align:left">A string of one or multiple comma-separated course codes; cannot be combined with <code>prefix</code> or <code>number</code>.</td>
+        <td style="text-align:left"><code>courseCodes=CMSC132,MATH141</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>prefix</code> (optional)</td>
+        <td style="text-align:left">The course prefix to match records to; for instance, <code>CMSC1</code> would match all CMSC1XX courses.</td>
+        <td style="text-align:left"><code>prefix=CMSC1</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>number</code> (optional)</td>
+        <td style="text-align:left">The course number to search for across multiple departments.</td>
+        <td style="text-align:left"><code>number=433</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>term</code> (optional)</td>
+        <td style="text-align:left">A string of equalities/inequalities to filter by term code. Possible expressions are: <code>eq</code>, <code>lte</code>, <code>lt</code>, <code>gt</code>, <code>gte</code>, <code>neq</code>, and <code>in</code> for a specific set. For multiple conditions, use multiple <code>term</code> arguments.</td>
+        <td style="text-align:left"><code>term=gte.202008</code> or <code>term=in.(202408,202501)</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>instructor</code> (optional)</td>
+        <td style="text-align:left">Return only sections taught by the given instructor, written in &quot;First Last&quot; order. This field is case-sensitive.</td>
+        <td style="text-align:left"><code>instructor=Larry%20Herman</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>instructorSource</code> (optional)</td>
+        <td style="text-align:left">A comma-separated list of <code>instructor_source</code> values to include. Defaults to all. Use <code>reported,lead</code> to exclude attributions carried across lecture groups.</td>
+        <td style="text-align:left"><code>instructorSource=reported</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>gpa</code> (optional)</td>
+        <td style="text-align:left">A string of equalities/inequalities to filter by computed GPA.</td>
+        <td style="text-align:left"><code>gpa=gte.3.5</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>graded</code> (optional)</td>
+        <td style="text-align:left">A string of equalities/inequalities to filter by how many students received a letter grade. Useful for excluding sections too small to draw conclusions from.</td>
+        <td style="text-align:left"><code>graded=gte.30</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>limit</code> (optional)</td>
+        <td style="text-align:left">Maximum number of records to return; defaults to 100, maximum of 500.</td>
+        <td style="text-align:left"><code>limit=10</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>offset</code> (optional)</td>
+        <td style="text-align:left">How many records to skip when returning results; defaults to 0.</td>
+        <td style="text-align:left"><code>offset=10</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>sortBy</code> (optional)</td>
+        <td style="text-align:left">A comma-separated list of which columns to sort by, ascending (<code>.asc</code>) or descending (<code>.desc</code>).</td>
+        <td style="text-align:left"><code>sortBy=term.desc,sec_code.asc</code></td>
+        </tr>
+        </tbody>
+        </table>
+        <h4 id="output-7">Output</h4>
+        <table>
+        <thead>
+        <tr>
+        <th style="text-align:left">field</th>
+        <th style="text-align:center">type</th>
+        <th style="text-align:left">description</th>
+        </tr>
+        </thead>
+        <tbody>
+        <tr>
+        <td style="text-align:left"><code>term</code></td>
+        <td style="text-align:center">int</td>
+        <td style="text-align:left">Six-digit term code: the four-digit year followed by the month the term begins (<code>01</code> spring, <code>08</code> fall). Fall 2024 is <code>202408</code>.</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>course_code</code></td>
+        <td style="text-align:center">string</td>
+        <td style="text-align:left">The course code, matching <code>course_code</code> elsewhere in this API. A course that has since been retired will have grade records but no entry in <code>/v1/courses</code>.</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>sec_code</code></td>
+        <td style="text-align:center">string</td>
+        <td style="text-align:left">The section code, matching <code>sec_code</code> on <code>/v1/sections</code>.</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>instructor</code></td>
+        <td style="text-align:center">string or null</td>
+        <td style="text-align:left">The instructor exactly as the Registrar printed them, in &quot;Last, First Middle&quot; order. Null where the release left the field blank.</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>instructor_name</code></td>
+        <td style="text-align:center">string or null</td>
+        <td style="text-align:left">The effective instructor in &quot;First Last&quot; order, suitable for matching against <code>/v1/instructors</code>. May be populated where <code>instructor</code> is null; see <code>instructor_source</code>.</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>instructor_source</code></td>
+        <td style="text-align:center">string or null</td>
+        <td style="text-align:left">How <code>instructor_name</code> was determined. <code>reported</code> means the Registrar named them on this row. <code>lead</code> means the name was carried from the lead section of the same lecture, which is how the release records discussion and lab sections. <code>course</code> means it was carried from a different lecture group or a differently-coded offering, and is materially less reliable. Null where no section of the course was named.</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>total</code></td>
+        <td style="text-align:center">int</td>
+        <td style="text-align:left">Students enrolled, as reported. From Fall 2017 this equals the sum of the fifteen grade buckets; in earlier terms it can exceed that sum by a few students whose outcome the older report did not categorize. Prefer <code>graded</code> as a denominator when comparing across that boundary.</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>a_plus</code>, <code>a</code>, <code>a_minus</code> … <code>d_minus</code>, <code>f</code></td>
+        <td style="text-align:center">int</td>
+        <td style="text-align:left">Students receiving each letter grade.</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>w</code></td>
+        <td style="text-align:center">int</td>
+        <td style="text-align:left">Students who withdrew.</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>other</code></td>
+        <td style="text-align:center">int</td>
+        <td style="text-align:left">Students receiving a non-letter outcome (pass/fail, incomplete, audit, and similar).</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>graded</code></td>
+        <td style="text-align:center">int</td>
+        <td style="text-align:left">Students who received a letter grade; the denominator used for <code>gpa</code>.</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>gpa</code></td>
+        <td style="text-align:center">number or null</td>
+        <td style="text-align:left">Mean GPA on the UMD 4.0 scale over <code>graded</code> students. Withdrawals and non-letter outcomes are excluded from both the numerator and the denominator. Null where nobody received a letter grade.</td>
+        </tr>
+        </tbody>
+        </table>
+        <h4 id="examples-6">Examples</h4>
+        <h5 id="getting-every-section-of-a-course-in-one-term">Getting every section of a course in one term</h5>
+        <p>Request: <code>GET http://api.jupiterp.com/v1/grades?courseCodes=CMSC132&amp;term=eq.202408&amp;limit=2</code></p>
+        <p>Response:</p>
+<pre><code>[
+  {
+    &quot;term&quot;: 202408,
+    &quot;course_code&quot;: &quot;CMSC132&quot;,
+    &quot;sec_code&quot;: &quot;0101&quot;,
+    &quot;instructor&quot;: &quot;Herman, Larry&quot;,
+    &quot;instructor_name&quot;: &quot;Larry Herman&quot;,
+    &quot;instructor_source&quot;: &quot;reported&quot;,
+    &quot;total&quot;: 32,
+    &quot;a_plus&quot;: 0,
+    &quot;a&quot;: 1,
+    &quot;a_minus&quot;: 4,
+    &quot;graded&quot;: 30,
+    &quot;gpa&quot;: 2.583
+  },
+  {
+    &quot;term&quot;: 202408,
+    &quot;course_code&quot;: &quot;CMSC132&quot;,
+    &quot;sec_code&quot;: &quot;0102&quot;,
+    &quot;instructor&quot;: null,
+    &quot;instructor_name&quot;: &quot;Larry Herman&quot;,
+    &quot;instructor_source&quot;: &quot;lead&quot;,
+    &quot;total&quot;: 34,
+    &quot;a_plus&quot;: 2,
+    &quot;a&quot;: 7,
+    &quot;a_minus&quot;: 5,
+    &quot;graded&quot;: 34,
+    &quot;gpa&quot;: 3.118
+  }
+]
+</code></pre>
+        <p>Note the second record: the release lists the instructor once against the lecture and leaves the discussion sections blank, so <code>instructor</code> is null while <code>instructor_name</code> carries the lecturer's name and <code>instructor_source</code> records that it was inferred.</p>
+        <h3 id="-v1-grades-summary-"><code>/v1/grades/summary</code></h3>
+        <p><a href="#endpoints">(back to endpoints)</a></p>
+        <p>Gets grade distributions with the individual sections summed together. This is usually the endpoint you want: <code>groupBy=course</code> answers &quot;how hard is this course&quot;, <code>groupBy=term</code> answers &quot;has it changed&quot;, <code>groupBy=instructor</code> answers &quot;who should I take it with&quot;, and <code>groupBy=instructorOverall</code> answers &quot;how does this professor grade in general&quot;.</p>
+        <p>Note that <code>instructorOverall</code> and <code>instructorTerm</code> aggregate across every course, so they take no course filter; passing <code>courseCodes</code>, <code>prefix</code>, or <code>number</code> with them returns 400 rather than silently ignoring the filter.</p>
+        <h4 id="query-parameters-8">Query parameters</h4>
+        <table>
+        <thead>
+        <tr>
+        <th style="text-align:left">param</th>
+        <th style="text-align:left">description</th>
+        <th style="text-align:left">example</th>
+        </tr>
+        </thead>
+        <tbody>
+        <tr>
+        <td style="text-align:left"><code>groupBy</code> (optional)</td>
+        <td style="text-align:left">One of <code>course</code> (default), <code>term</code>, <code>instructor</code>, <code>instructorOverall</code>, or <code>instructorTerm</code>. <code>course</code> returns one record per course across every term on file; <code>term</code> one record per course per term; <code>instructor</code> one record per course per instructor; <code>instructorOverall</code> one record per instructor across every course they have taught; <code>instructorTerm</code> one record per instructor per term.</td>
+        <td style="text-align:left"><code>groupBy=instructorOverall</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>includeCarried</code> (optional)</td>
+        <td style="text-align:left">Only meaningful with <code>groupBy=instructor</code>. When true, also counts sections whose instructor was carried across lecture groups (<code>instructor_source</code> of <code>course</code>). Wider coverage, lower confidence. Defaults to false.</td>
+        <td style="text-align:left"><code>includeCarried=true</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>courseCodes</code> (optional)</td>
+        <td style="text-align:left">A string of one or multiple comma-separated course codes; cannot be combined with <code>prefix</code> or <code>number</code>.</td>
+        <td style="text-align:left"><code>courseCodes=CMSC132</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>prefix</code> (optional)</td>
+        <td style="text-align:left">The course prefix to match records to.</td>
+        <td style="text-align:left"><code>prefix=CMSC3</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>number</code> (optional)</td>
+        <td style="text-align:left">The course number to search for across multiple departments.</td>
+        <td style="text-align:left"><code>number=433</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>term</code> (optional)</td>
+        <td style="text-align:left">Equalities/inequalities to filter by term code. Only valid with <code>groupBy=term</code> or <code>groupBy=instructorTerm</code>; the other groupings aggregate across every term on file and will reject this parameter rather than ignore it.</td>
+        <td style="text-align:left"><code>term=gte.202008</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>instructor</code> (optional)</td>
+        <td style="text-align:left">Return only the given instructor, in &quot;First Last&quot; order. Case-sensitive, exact. <strong>Prefer <code>instructorSlug</code>:</strong> the same professor is spelled several different ways across the registrar's grade files, Testudo, and PlanetTerp, so an exact name match silently returns nothing for a large share of instructors. Requires an instructor grouping.</td>
+        <td style="text-align:left"><code>instructor=Anwar%20Mamat</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>instructorSlug</code> (optional)</td>
+        <td style="text-align:left">Return only the given instructor, by Jupiterp slug. This resolves through instructor identity rather than string equality, so it cannot miss because of a middle name or an accent. Requires an instructor grouping.</td>
+        <td style="text-align:left"><code>instructorSlug=shane-walsh</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>instructorId</code> (optional)</td>
+        <td style="text-align:left">Return only the given instructor, by numeric id. Requires an instructor grouping.</td>
+        <td style="text-align:left"><code>instructorId=4711</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>gpa</code> (optional)</td>
+        <td style="text-align:left">Equalities/inequalities to filter by the aggregated GPA.</td>
+        <td style="text-align:left"><code>gpa=gte.3.0</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>minStudents</code> (optional)</td>
+        <td style="text-align:left">Exclude groups with fewer than this many students who received a letter grade. Applied to <code>graded</code>, not <code>total</code>: before Fall 2017 the registrar's total includes students whose outcome was never categorized, so it is not comparable across eras, while <code>graded</code> is also the GPA denominator.</td>
+        <td style="text-align:left"><code>minStudents=100</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>count</code> (optional)</td>
+        <td style="text-align:left">If true, the total number of matching records is returned in the <code>Content-Range</code> response header.</td>
+        <td style="text-align:left"><code>count=true</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>limit</code> (optional)</td>
+        <td style="text-align:left">Maximum number of records to return; defaults to 100, maximum of 500.</td>
+        <td style="text-align:left"><code>limit=10</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>offset</code> (optional)</td>
+        <td style="text-align:left">How many records to skip; defaults to 0.</td>
+        <td style="text-align:left"><code>offset=10</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>sortBy</code> (optional)</td>
+        <td style="text-align:left">A comma-separated list of which columns to sort by.</td>
+        <td style="text-align:left"><code>sortBy=gpa.desc</code></td>
+        </tr>
+        </tbody>
+        </table>
+        <h4 id="output-8">Output</h4>
+        <p>All groupings return the summed grade buckets (<code>a_plus</code> through <code>other</code>), <code>total</code>, <code>graded</code>, and <code>gpa</code>, defined exactly as on <code>/v1/grades</code>. In addition:</p>
+        <table>
+        <thead>
+        <tr>
+        <th style="text-align:left">field</th>
+        <th style="text-align:center">type</th>
+        <th style="text-align:left">description</th>
+        </tr>
+        </thead>
+        <tbody>
+        <tr>
+        <td style="text-align:left"><code>course_code</code></td>
+        <td style="text-align:center">string</td>
+        <td style="text-align:left">The course these counts are for.</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>term</code></td>
+        <td style="text-align:center">int</td>
+        <td style="text-align:left">Only present when <code>groupBy=term</code>.</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>instructor</code></td>
+        <td style="text-align:center">string</td>
+        <td style="text-align:left">Present on the instructor groupings; the instructor's canonical display name.</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>instructor_id</code></td>
+        <td style="text-align:center">int</td>
+        <td style="text-align:left">Present on the instructor groupings; the Jupiterp instructor id.</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>instructor_slug</code></td>
+        <td style="text-align:center">string</td>
+        <td style="text-align:left">Present on the instructor groupings; the Jupiterp slug, which is the professor page URL segment.</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>course_count</code></td>
+        <td style="text-align:center">int</td>
+        <td style="text-align:left">Only present when <code>groupBy=instructorOverall</code> or <code>instructorTerm</code>; how many distinct courses are represented.</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>section_count</code></td>
+        <td style="text-align:center">int</td>
+        <td style="text-align:left">How many individual sections were summed.</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>term_count</code></td>
+        <td style="text-align:center">int</td>
+        <td style="text-align:left">How many distinct terms are represented. Not present when <code>groupBy=term</code>.</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>first_term</code>, <code>last_term</code></td>
+        <td style="text-align:center">int</td>
+        <td style="text-align:left">The earliest and latest term represented. Not present when <code>groupBy=term</code>.</td>
+        </tr>
+        </tbody>
+        </table>
+        <h4 id="examples-7">Examples</h4>
+        <h5 id="how-hard-is-a-course-over-its-whole-history">How hard is a course, over its whole history</h5>
+        <p>Request: <code>GET http://api.jupiterp.com/v1/grades/summary?courseCodes=CMSC351</code></p>
+        <p>Response:</p>
+<pre><code>[
+  {
+    &quot;course_code&quot;: &quot;CMSC351&quot;,
+    &quot;section_count&quot;: 97,
+    &quot;term_count&quot;: 32,
+    &quot;first_term&quot;: 201008,
+    &quot;last_term&quot;: 202601,
+    &quot;total&quot;: 14969,
+    &quot;graded&quot;: 13346,
+    &quot;a_plus&quot;: 450,
+    &quot;a&quot;: 1578,
+    &quot;a_minus&quot;: 1153,
+    &quot;b_plus&quot;: 1313,
+    &quot;b&quot;: 2169,
+    &quot;b_minus&quot;: 1441,
+    &quot;c_plus&quot;: 1263,
+    &quot;c&quot;: 1583,
+    &quot;c_minus&quot;: 1002,
+    &quot;d_plus&quot;: 185,
+    &quot;d&quot;: 846,
+    &quot;d_minus&quot;: 70,
+    &quot;f&quot;: 293,
+    &quot;w&quot;: 738,
+    &quot;other&quot;: 791,
+    &quot;gpa&quot;: 2.699
+  }
+]
+</code></pre>
+        <h5 id="comparing-instructors-for-a-course">Comparing instructors for a course</h5>
+        <p>Request: <code>GET http://api.jupiterp.com/v1/grades/summary?groupBy=instructor&amp;courseCodes=CMSC330&amp;minStudents=1000&amp;sortBy=gpa.desc</code></p>
+        <p>Response:</p>
+<pre><code>[
+  {
+    &quot;course_code&quot;: &quot;CMSC330&quot;,
+    &quot;instructor&quot;: &quot;Michael W. Hicks&quot;,
+    &quot;section_count&quot;: 37,
+    &quot;term_count&quot;: 7,
+    &quot;first_term&quot;: 201301,
+    &quot;last_term&quot;: 202101,
+    &quot;total&quot;: 1205,
+    &quot;graded&quot;: 1076,
+    &quot;gpa&quot;: 3.123
+  },
+  {
+    &quot;course_code&quot;: &quot;CMSC330&quot;,
+    &quot;instructor&quot;: &quot;Roger D. Eastman&quot;,
+    &quot;section_count&quot;: 39,
+    &quot;term_count&quot;: 5,
+    &quot;first_term&quot;: 201808,
+    &quot;last_term&quot;: 202108,
+    &quot;total&quot;: 1258,
+    &quot;graded&quot;: 1045,
+    &quot;gpa&quot;: 3.047
+  }
+]
+</code></pre>
+        <h3 id="-v1-grades-terms-"><code>/v1/grades/terms</code></h3>
+        <p><a href="#endpoints">(back to endpoints)</a></p>
+        <p>Gets every term for which grade data has been loaded, newest first. Takes no parameters. Useful for discovering coverage before querying, since the released data covers fall and spring only.</p>
+        <h4 id="output-9">Output</h4>
+        <table>
+        <thead>
+        <tr>
+        <th style="text-align:left">field</th>
+        <th style="text-align:center">type</th>
+        <th style="text-align:left">description</th>
+        </tr>
+        </thead>
+        <tbody>
+        <tr>
+        <td style="text-align:left"><code>term</code></td>
+        <td style="text-align:center">int</td>
+        <td style="text-align:left">Six-digit term code.</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>section_count</code></td>
+        <td style="text-align:center">int</td>
+        <td style="text-align:left">Sections with grade data in this term.</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>course_count</code></td>
+        <td style="text-align:center">int</td>
+        <td style="text-align:left">Distinct courses with grade data in this term.</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>total</code></td>
+        <td style="text-align:center">int</td>
+        <td style="text-align:left">Students enrolled across every section.</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>graded</code></td>
+        <td style="text-align:center">int</td>
+        <td style="text-align:left">Students who received a letter grade.</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>gpa</code></td>
+        <td style="text-align:center">number</td>
+        <td style="text-align:left">Mean GPA across the whole university for the term.</td>
+        </tr>
+        </tbody>
+        </table>
+        <h4 id="example">Example</h4>
+        <p>Request: <code>GET http://api.jupiterp.com/v1/grades/terms</code></p>
+        <p>Response:</p>
+<pre><code>[
+  {
+    &quot;term&quot;: 202601,
+    &quot;section_count&quot;: 6543,
+    &quot;course_count&quot;: 3213,
+    &quot;total&quot;: 168366,
+    &quot;graded&quot;: 161397,
+    &quot;gpa&quot;: 3.488
+  },
+  {
+    &quot;term&quot;: 202508,
+    &quot;section_count&quot;: 7056,
+    &quot;course_count&quot;: 3263,
+    &quot;total&quot;: 186608,
+    &quot;graded&quot;: 176931,
+    &quot;gpa&quot;: 3.503
+  }
+]
+</code></pre>
+        <hr>
+        <h1 id="jupiterp-api-v1-reviews-">Jupiterp API v1 (reviews)</h1>
+        <p>The endpoints below write, and they are governed differently from the read
+        endpoints above even though both are served under <code>/v1</code>. Writes need things
+        reads do not: an origin allowlist, authentication, rate limiting, and a captcha.
+        The read endpoints stay permissive, unauthenticated, and cacheable.</p>
+        <p>That difference is worth stating plainly, because it is the one thing the shared
+        prefix hides. <strong>Reads accept requests from any origin. Writes accept them only
+        from an allowlist</strong> (<code>V1_ALLOWED_ORIGINS</code>). A browser on an unrelated domain can
+        call <code>GET /v1/courses</code> and will be refused by <code>POST /v1/reviews</code>.</p>
+        <p>Reviews are <strong>pre-moderated</strong>. Nothing submitted here is publicly visible until
+        a moderator approves it, and that is true whether the decision is made by a
+        person or by the automated triage.</p>
+        <table>
+        <thead>
+        <tr>
+        <th style="text-align:left">path</th>
+        <th style="text-align:left">method</th>
+        <th style="text-align:left">description</th>
+        </tr>
+        </thead>
+        <tbody>
+        <tr>
+        <td style="text-align:left"><code>/v1/reviews</code></td>
+        <td style="text-align:left">GET</td>
+        <td style="text-align:left">Approved reviews for a professor</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>/v1/reviews</code></td>
+        <td style="text-align:left">POST</td>
+        <td style="text-align:left">Submit a review</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>/v1/reviews/verify/:token</code></td>
+        <td style="text-align:left">GET</td>
+        <td style="text-align:left">Confirm an emailed link</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>/v1/reviews/:id</code></td>
+        <td style="text-align:left">DELETE</td>
+        <td style="text-align:left">Withdraw (manage key)</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>/v1/reviews/:id/report</code></td>
+        <td style="text-align:left">POST</td>
+        <td style="text-align:left">Report a published review</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>/v1/admin/reviews</code></td>
+        <td style="text-align:left">GET</td>
+        <td style="text-align:left">Moderation queue (admin key)</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>/v1/admin/reviews/:id</code></td>
+        <td style="text-align:left">PUT</td>
+        <td style="text-align:left">Approve, reject, or escalate</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>/v1/admin/reports</code></td>
+        <td style="text-align:left">GET</td>
+        <td style="text-align:left">Open reports (admin key)</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>/v1/admin/sweep</code></td>
+        <td style="text-align:left">POST</td>
+        <td style="text-align:left">Scheduled maintenance (admin key). Answers <code>200</code> when every step succeeded and <code>207</code> with a <code>failures</code> object when any did not — alert on non-<code>200</code>.</td>
+        </tr>
+        </tbody>
+        </table>
+        <h2 id="-get-v1-reviews-"><code>GET /v1/reviews</code></h2>
+        <p>Approved reviews only, newest first. Served from a database view that cannot
+        express an unapproved row and does not contain the submitter's identity
+        columns at all.</p>
+        <table>
+        <thead>
+        <tr>
+        <th style="text-align:left">parameter</th>
+        <th style="text-align:left">description</th>
+        <th style="text-align:left">example</th>
+        </tr>
+        </thead>
+        <tbody>
+        <tr>
+        <td style="text-align:left"><code>instructorSlug</code> (required)</td>
+        <td style="text-align:left">Whose reviews to return.</td>
+        <td style="text-align:left"><code>instructorSlug=shane-walsh</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>courseCode</code> (optional)</td>
+        <td style="text-align:left">Restrict to one course.</td>
+        <td style="text-align:left"><code>courseCode=CMSC132</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>limit</code>, <code>offset</code> (optional)</td>
+        <td style="text-align:left">Paging; defaults 25 and 0.</td>
+        <td style="text-align:left"><code>limit=50</code></td>
+        </tr>
+        </tbody>
+        </table>
+        <p>The total is returned in the <code>Content-Range</code> header.</p>
+        <h2 id="-post-v1-reviews-"><code>POST /v1/reviews</code></h2>
+<pre><code class="language-json">{
+  &quot;instructor_slug&quot;: &quot;shane-walsh&quot;,
+  &quot;course_code&quot;: &quot;CMSC132&quot;,
+  &quot;term&quot;: 202508,
+  &quot;rating&quot;: 4.5,
+  &quot;expected_grade&quot;: &quot;A-&quot;,
+  &quot;title&quot;: &quot;Genuinely excellent lecturer&quot;,
+  &quot;body&quot;: &quot;…&quot;,
+  &quot;email&quot;: &quot;student@terpmail.umd.edu&quot;,
+  &quot;captcha_token&quot;: &quot;0.abc…&quot;
+}
+</code></pre>
+        <p><code>rating</code> is a decimal between 1 and 5 <strong>on a half step</strong> — <code>4.5</code> is valid,
+        <code>4.3</code> is not. <code>email</code> must be a <code>terpmail.umd.edu</code> or <code>umd.edu</code> address; it is
+        stored only as a peppered hash, is never displayed, and is never shown to the
+        professor. <code>course_code</code> and <code>term</code> are optional, and <code>term</code> must be a Fall or
+        Spring term, because the grade dataset covers only those.</p>
+        <p>Responds <code>202 Accepted</code> with <code>{&quot;status&quot;:&quot;verification_sent&quot;}</code>.</p>
+        <p><strong>The response is identical whether or not that address has already reviewed
+        this professor.</strong> A distinguishable &quot;you have already reviewed this&quot; would turn
+        the endpoint into an oracle for &quot;did person X review professor Y&quot;, which is the
+        privacy property the hashing exists to provide.</p>
+        <p>Rate limited to 5 per hour per IP, 3 per day per address, and 20 per hour per
+        professor across all submitters. The last one is what catches a coordinated
+        run on a single professor, which the per-person limits do nothing about.</p>
+        <h2 id="-get-v1-reviews-verify-token-"><code>GET /v1/reviews/verify/:token</code></h2>
+        <p>Confirms the emailed link, moves the review to <code>pending</code>, and returns the
+        manage key once:</p>
+<pre><code class="language-json">{ &quot;status&quot;: &quot;verified&quot;, &quot;manage_key&quot;: &quot;…&quot;, &quot;message&quot;: &quot;…&quot; }
+</code></pre>
+        <p>Idempotent: a second visit returns <code>already_verified</code> rather than an error,
+        because mail clients prefetch links and people double-click.</p>
+        <p>The manage key is also emailed. It cannot be recovered — there is deliberately
+        no way to link it back to a person.</p>
+        <h2 id="-delete-v1-reviews-id-"><code>DELETE /v1/reviews/:id</code></h2>
+        <p><code>Authorization: Bearer &lt;manage key&gt;</code>.</p>
+        <p>A withdrawal is a soft delete — the row remains so the one-review-per-person
+        rule still holds, but the content is actually nulled.</p>
+        <p>There is no edit endpoint. A published review is final text: the only way to
+        change what a review says is to withdraw it and write another. Editing after
+        approval is a way to get innocuous text past a moderator and then replace it,
+        and re-queueing every edit for moderation solves that at the cost of a flow
+        where a reviewer can silently republish. Withdrawal carries no such hole, so it
+        is the one the reviewer keeps.</p>
+        <h2 id="-put-v1-admin-reviews-id-"><code>PUT /v1/admin/reviews/:id</code></h2>
+<pre><code class="language-json">{
+  &quot;action&quot;: &quot;approve&quot;,
+  &quot;reason&quot;: &quot;…&quot;,
+  &quot;confidence&quot;: 0.93,
+  &quot;categories&quot;: [],
+  &quot;policy_version&quot;: &quot;2026-08-14&quot;,
+  &quot;model&quot;: &quot;gemini-2.0-flash-001&quot;
+}
+</code></pre>
+        <p>Two callers with different keys: a human moderator with the admin key, and the
+        automated triage with a narrowly scoped callback key that authorises this one
+        route. Which one acted is recorded on every decision.</p>
+        <p>Idempotent — asking for the state a review is already in is a success, not a
+        second audit entry. State-guarded — only <code>pending</code> and <code>escalated</code> reviews are
+        decidable, and a late retry against a review a human already actioned returns
+        <code>409</code> rather than overturning it.</p>
+        <p>Every call writes an audit row. While shadow mode is on, an automated decision
+        is recorded with <code>applied: false</code> and the review is escalated to a human
+        instead.</p>
+        <h2 id="errors">Errors</h2>
+        <table>
+        <thead>
+        <tr>
+        <th style="text-align:left">status</th>
+        <th style="text-align:left">meaning</th>
+        </tr>
+        </thead>
+        <tbody>
+        <tr>
+        <td style="text-align:left"><code>400</code></td>
+        <td style="text-align:left">Validation failed; the message names the field</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>401</code></td>
+        <td style="text-align:left">Missing or wrong key</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>404</code></td>
+        <td style="text-align:left">No such professor or review</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>409</code></td>
+        <td style="text-align:left">Already decided by someone else</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>410</code></td>
+        <td style="text-align:left">Verification link expired</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>429</code></td>
+        <td style="text-align:left">Rate limited</td>
+        </tr>
+        </tbody>
+        </table>
 
-
+    </body>
 </html>

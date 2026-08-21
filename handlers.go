@@ -20,7 +20,59 @@ const (
 	instructorsTTL time.Duration = 12 * time.Hour
 	departmentsTTL time.Duration = 2 * time.Hour
 	sectionsTTL    time.Duration = 15 * time.Minute
+	// Grade data changes once a term, when a new records request is fulfilled.
+	gradesTTL time.Duration = 12 * time.Hour
+	// Deliberately short. The cache is per Cloud Run instance with no
+	// cross-instance invalidation, so a newly approved review would otherwise
+	// appear on one refresh and vanish on the next depending on which instance
+	// answered -- and the same reasoning applies to a reader's browser.
+	reviewsTTL time.Duration = 60 * time.Second
 )
+
+// Views backing the /v0/grades/summary endpoint, selected by `groupBy`.
+const (
+	gradeSummaryByCourseTable     = "course_grades"
+	gradeSummaryByTermTable       = "course_term_grades"
+	gradeSummaryByInstructorTable = "course_instructor_grades"
+	// As above, but also counting sections whose instructor was carried across
+	// lecture groups rather than within one. See `instructor_source`.
+	gradeSummaryByInstructorAllTable = "course_instructor_grades_all"
+	// One row per instructor across every course they have taught. Backs the
+	// headline GPA on a professor page.
+	gradeSummaryByInstructorOverallTable = "instructor_grades"
+	// One row per instructor per term. Backs the trend chart.
+	gradeSummaryByInstructorTermTable = "instructor_term_grades"
+)
+
+// True for the views that carry instructor columns, and so can be filtered by
+// instructor slug, id, or name.
+func isInstructorSummary(table string) bool {
+	switch table {
+	case gradeSummaryByInstructorTable,
+		gradeSummaryByInstructorAllTable,
+		gradeSummaryByInstructorOverallTable,
+		gradeSummaryByInstructorTermTable:
+		return true
+	}
+	return false
+}
+
+// True for the views that have no `course_code` column, so a course filter
+// cannot be applied to them.
+//
+// This matters because silently ignoring a course filter is worse than
+// rejecting it: a caller asking for one professor's CMSC132 grades and
+// receiving their average across everything has no way to tell.
+func isCourselessSummary(table string) bool {
+	return table == gradeSummaryByInstructorOverallTable ||
+		table == gradeSummaryByInstructorTermTable
+}
+
+// True for the views carrying a `term` column.
+func hasTermColumn(table string) bool {
+	return table == gradeSummaryByTermTable ||
+		table == gradeSummaryByInstructorTermTable
+}
 
 /* ================================= ARGS ================================== */
 // For all argument structs, the first character of a field must be upper-case
@@ -50,7 +102,7 @@ type CoursesArgs struct {
 	// The offset of courses to view. For example, offset=30 will return
 	// courses starting at the 30th result.
 	// Default value: 0
-	Offset uint16 `form:"offset"`
+	Offset uint32 `form:"offset"`
 
 	// String of columns to sort by
 	SortBy string `form:"sortBy"`
@@ -95,7 +147,7 @@ type CoursesWithSectionsArgs struct {
 	// The offset of courses to view. For example, offset=30 will return
 	// courses starting at the 30th result.
 	// Default value: 0
-	Offset uint16 `form:"offset"`
+	Offset uint32 `form:"offset"`
 
 	// String of columns to sort by
 	SortBy string `form:"sortBy"`
@@ -123,7 +175,7 @@ type SectionsArgs struct {
 	// The offset of sections to view. For example, offset=30 will return
 	// sections starting at the 30th result.
 	// Default value: 0
-	Offset uint16 `form:"offset"`
+	Offset uint32 `form:"offset"`
 
 	// String of columns to sort by
 	SortBy string `form:"sortBy"`
@@ -136,6 +188,11 @@ type SectionsArgs struct {
 
 	// Instructor name filter (case sensitive, exact contains match)
 	Instructor string `form:"instructor"`
+
+	// Instructor slug filter. Prefer this over `instructor`: it matches the
+	// resolved instructor rather than a string, so it still finds a professor
+	// whose Testudo spelling differs from their canonical record.
+	InstructorSlug string `form:"instructorSlug"`
 }
 
 func (s *SectionsArgs) setDefaults() {
@@ -152,6 +209,37 @@ type InstructorArgs struct {
 	// A comma-separated list of instructor slugs.
 	InstructorSlugs string `form:"instructorSlugs"`
 
+	// Case-insensitive substring match on instructor name.
+	//
+	// Matched against the normalized name column, so accents and punctuation
+	// are ignored on both sides: "obrien" finds "O'Brien" and "jose" finds
+	// "José". Without this the only way to find a professor by partial name
+	// was to download every instructor and filter client-side, which is what
+	// the site did.
+	NameSearch string `form:"nameSearch"`
+
+	// Restrict to instructors currently teaching at least one section.
+	ActiveOnly bool `form:"activeOnly"`
+
+	// Return the total number of matching rows in the Content-Range header.
+	// Costs an extra aggregate over the filtered set, so it is opt-in.
+	Count bool `form:"count"`
+
+	// Comma-separated columns to return, instead of the whole row.
+	//
+	// An instructor row is wide -- seventeen columns, most of them PlanetTerp
+	// provenance -- and a caller that wants a rating gets all of it. The course
+	// planner needs exactly `slug` and `average_rating` for all 2,976 active
+	// instructors, which was 1.3MB of which about 6% was read.
+	//
+	// Names are validated against a fixed set rather than forwarded, because
+	// this value lands in PostgREST's `select`, where an unchecked string can
+	// name columns the endpoint does not intend to publish or embed related
+	// tables. An unknown name is rejected rather than dropped: silently
+	// returning a column the caller did not ask for is the failure mode this
+	// whole file keeps running into.
+	Columns string `form:"columns"`
+
 	// Conditions for instructor ratings; for example, gt.3.5
 	Ratings []string `form:"ratings"`
 
@@ -162,7 +250,7 @@ type InstructorArgs struct {
 	// The offset of sections to view. For example, offset=30 will return
 	// sections starting at the 30th result.
 	// Default value: 0
-	Offset uint16 `form:"offset"`
+	Offset uint32 `form:"offset"`
 
 	// String of columns to sort by
 	SortBy string `form:"sortBy"`
@@ -172,9 +260,230 @@ func (i *InstructorArgs) setDefaults() {
 	if i.Limit == 0 {
 		i.Limit = 100
 	}
+	// A total order by default, so paging is stable.
+	//
+	// Postgres promises no particular row order without ORDER BY, and does not
+	// repeat the same arbitrary order between queries. Any client paging this
+	// endpoint with limit/offset therefore skips some rows and receives others
+	// twice: walking `instructors/active` returned all 2,976 rows but only
+	// 2,336 distinct professors, and a different ~640 went missing each time.
+	//
+	// It surfaced as a professor who linked to their page from the professor
+	// search but rendered as unlinked plain text in the planner, changing on
+	// every reload. The default belongs here rather than in each client,
+	// because a caller cannot tell from a correct-looking page that anything
+	// was dropped.
+	//
+	// `slug` because it is unique: the order is total, so no two rows can tie
+	// and straddle a page boundary. An explicit sortBy still wins, and callers
+	// that pass one are responsible for its stability.
+	if i.SortBy == "" {
+		i.SortBy = "slug.asc"
+	}
+}
+
+// Arguments for getting section-level grade distributions.
+type GradesArgs struct {
+	// A string of one or multiple comma-separated course codes.
+	CourseCodes string `form:"courseCodes"`
+
+	// The course prefix to filter by (ex. CMSC1 for all CMSC1XX courses).
+	Prefix string `form:"prefix"`
+
+	// The number to filter by (ex. 132 for CMSC132).
+	Number string `form:"number"`
+
+	// Conditions for the term code; for example, gte.202008. For a specific
+	// set of terms, in.(202408,202501).
+	Terms []string `form:"term"`
+
+	// Instructor name filter, in "First Last" order (case sensitive, exact).
+	//
+	// Deprecated in practice: the same professor is spelled four different
+	// ways across the registrar exports, Testudo, and PlanetTerp, so an exact
+	// name match silently returns nothing for a large share of instructors.
+	// Prefer instructorSlug or instructorId.
+	Instructor string `form:"instructor"`
+
+	// Filter by Jupiterp instructor slug. This is the reliable one: it
+	// resolves through instructor identity rather than string equality, so it
+	// cannot miss because the caller spelled a middle name differently.
+	InstructorSlug string `form:"instructorSlug"`
+
+	// Filter by numeric instructor id, for machine clients that already hold
+	// one.
+	InstructorId uint64 `form:"instructorId"`
+
+	// A comma-separated list of instructor_source values to include; defaults
+	// to every row. Use reported,lead to exclude attributions carried across
+	// lecture groups.
+	InstructorSource string `form:"instructorSource"`
+
+	// Conditions for GPA; for example, gte.3.5
+	Gpa []string `form:"gpa"`
+
+	// Conditions for the number of students who received a letter grade; for
+	// example, gte.30. Useful for excluding sections too small to read
+	// anything into.
+	Graded []string `form:"graded"`
+
+	// Number of records to return per page.
+	// Default value: 100; Maximum value: 500
+	Limit uint16 `form:"limit" binding:"omitempty,min=1,max=500"`
+
+	// The offset of records to view.
+	// Default value: 0
+	Offset uint32 `form:"offset"`
+
+	// String of columns to sort by
+	SortBy string `form:"sortBy"`
+}
+
+func (g *GradesArgs) setDefaults() {
+	if g.Limit == 0 {
+		g.Limit = 100
+	}
+}
+
+// Arguments for getting aggregated grade distributions.
+type GradeSummaryArgs struct {
+	// How to group the results.
+	//
+	//   course             one row per course, across every term      (default)
+	//   term               one row per course per term
+	//   instructor         one row per course per instructor
+	//   instructorOverall  one row per instructor, across every course
+	//   instructorTerm     one row per instructor per term
+	//
+	// The last two are what a professor page needs - a headline GPA across
+	// everything they have taught, and a trend over time - and neither was
+	// expressible before.
+	GroupBy string `form:"groupBy" binding:"omitempty,oneof=course term instructor instructorOverall instructorTerm"`
+
+	// When grouping by instructor, also count sections whose instructor was
+	// carried from a different lecture group or a differently-coded offering.
+	// Wider coverage, lower confidence.
+	IncludeCarried bool `form:"includeCarried"`
+
+	// A string of one or multiple comma-separated course codes.
+	CourseCodes string `form:"courseCodes"`
+
+	// The course prefix to filter by (ex. CMSC1 for all CMSC1XX courses).
+	Prefix string `form:"prefix"`
+
+	// The number to filter by (ex. 132 for CMSC132).
+	Number string `form:"number"`
+
+	// Conditions for the term code; only applied when groupBy=term, since the
+	// other groupings are aggregated across every term on file.
+	Terms []string `form:"term"`
+
+	// Instructor name filter, in "First Last" order (case sensitive, exact).
+	// Only applied on the instructor groupings.
+	//
+	// Deprecated in practice; see the note on GradesArgs.Instructor. Prefer
+	// instructorSlug.
+	Instructor string `form:"instructor"`
+
+	// Filter by Jupiterp instructor slug. Only applied on the instructor
+	// groupings. This is the parameter a professor page should use.
+	InstructorSlug string `form:"instructorSlug"`
+
+	// Filter by numeric instructor id. Only applied on the instructor
+	// groupings.
+	InstructorId uint64 `form:"instructorId"`
+
+	// Conditions for GPA; for example, gte.3.5
+	Gpa []string `form:"gpa"`
+
+	// Exclude groups totalling fewer than this many students.
+	//
+	// Applied to `graded`, not `total`: before Fall 2017 the registrar's total
+	// includes students whose outcome was never categorized, so it is not
+	// comparable across eras. `graded` is the letter-grade count, which is
+	// also the GPA denominator - so this threshold means the same thing as the
+	// number the GPA was computed from.
+	MinStudents uint16 `form:"minStudents"`
+
+	// Return the total number of matching rows in the Content-Range header.
+	Count bool `form:"count"`
+
+	// Number of records to return per page.
+	// Default value: 100; Maximum value: 500
+	Limit uint16 `form:"limit" binding:"omitempty,min=1,max=500"`
+
+	// The offset of records to view.
+	// Default value: 0
+	Offset uint32 `form:"offset"`
+
+	// String of columns to sort by
+	SortBy string `form:"sortBy"`
+}
+
+func (g *GradeSummaryArgs) setDefaults() {
+	if g.Limit == 0 {
+		g.Limit = 100
+	}
+	if g.GroupBy == "" {
+		g.GroupBy = "course"
+	}
+}
+
+// Resolve `groupBy` and `includeCarried` to the view that serves them.
+func (g GradeSummaryArgs) summaryTable() string {
+	switch g.GroupBy {
+	case "term":
+		return gradeSummaryByTermTable
+	case "instructor":
+		if g.IncludeCarried {
+			return gradeSummaryByInstructorAllTable
+		}
+		return gradeSummaryByInstructorTable
+	case "instructorOverall":
+		return gradeSummaryByInstructorOverallTable
+	case "instructorTerm":
+		return gradeSummaryByInstructorTermTable
+	default:
+		return gradeSummaryByCourseTable
+	}
 }
 
 /* =============================== UTILITIES =============================== */
+
+// Reject requests that set more than one of the mutually exclusive course
+// filters, all of which target the same column.
+func checkCourseFilters(courseCodes, prefix, number string) error {
+	set := 0
+	for _, arg := range []string{courseCodes, prefix, number} {
+		if arg != "" {
+			set++
+		}
+	}
+	if set > 1 {
+		return errors.New("cannot specify more than one of courseCodes, prefix, and number")
+	}
+	return nil
+}
+
+// Reject requests that set more than one instructor filter. They target the
+// same thing by different keys, and the query builder honors them in a fixed
+// precedence, so accepting two would mean silently ignoring one of them.
+func checkInstructorFilters(name, slug string, id uint64) error {
+	set := 0
+	if name != "" {
+		set++
+	}
+	if slug != "" {
+		set++
+	}
+	if id != 0 {
+		set++
+	}
+	if set > 1 {
+		return errors.New("cannot specify more than one of instructor, instructorSlug, and instructorId")
+	}
+	return nil
+}
 
 // Takes the error from a failed query argument validation/binding and sends a
 // message to the caller listing any missing or invalid args.
@@ -252,7 +561,34 @@ func buildCacheKey(r *http.Request) string {
 	return base + "?" + strings.Join(filtered, "&")
 }
 
-func writePayload(ctx *gin.Context, payload *cachedPayload, path string) bool {
+// Tell the caller how long this response stays good for.
+//
+// The service has always known this -- every endpoint passes a TTL to its cache
+// -- and has never told anyone. No `Cache-Control`, no `ETag`, nothing. So the
+// server would consider instructor data fresh for twelve hours while every
+// browser and CDN in front of it refetched the same 1.3MB on each page load.
+//
+// The TTL is reused rather than invented, because a second set of numbers would
+// drift from the first. Note that the two caches stack: a response can sit in
+// the service's LRU for up to the TTL and then in a browser for the TTL again,
+// so worst-case staleness is twice the value here. That matters most for
+// `instructors`, where it delays a newly approved rating; shorten that constant
+// if it ever feels long.
+//
+// Only successful responses are marked cacheable. Caching an error would pin it
+// in front of the fix.
+func setCacheControl(ctx *gin.Context, status int, ttl time.Duration) {
+	if status < 200 || status >= 300 || ttl <= 0 {
+		return
+	}
+	seconds := int(ttl.Seconds())
+	ctx.Writer.Header().Set(
+		"Cache-Control",
+		fmt.Sprintf("public, max-age=%d, stale-while-revalidate=%d", seconds, seconds),
+	)
+}
+
+func writePayload(ctx *gin.Context, payload *cachedPayload, path string, ttl time.Duration) bool {
 	header := ctx.Writer.Header()
 	replacedKeys := make(map[string]struct{}, len(payload.header))
 	for k := range payload.header {
@@ -270,6 +606,11 @@ func writePayload(ctx *gin.Context, payload *cachedPayload, path string) bool {
 			header.Add(canonicalKey, v)
 		}
 	}
+	// After the upstream headers are applied, so it cannot be overwritten by a
+	// `Cache-Control` copied from PostgREST, and before the body is written,
+	// since that is what flushes them.
+	setCacheControl(ctx, payload.status, ttl)
+
 	ctx.Status(payload.status)
 	if _, err := ctx.Writer.Write(payload.body); err != nil {
 		_ = ctx.Error(err)
@@ -292,13 +633,13 @@ func buildPayloadFromResponse(res *http.Response) (*cachedPayload, error) {
 	}, nil
 }
 
-func (client SupabaseClient) serveFromCache(ctx *gin.Context, path, key string) bool {
-	payload, ok := client.cache.Get(key)
+func (client SupabaseClient) serveFromCache(ctx *gin.Context, path, key string, ttl time.Duration) bool {
+	payload, ok := client.cacheFor(path).Get(key)
 	if !ok {
 		log.Printf("Cache MISS for GET %s with key %s", path, key)
 		return false
 	}
-	if writePayload(ctx, payload, path) {
+	if writePayload(ctx, payload, path, ttl) {
 		log.Printf("Cache HIT and served GET %s from cache with status %d", path, payload.status)
 	}
 
@@ -312,11 +653,11 @@ func (client SupabaseClient) writeAndCacheResponse(ctx *gin.Context, res *http.R
 		sendInternalError(ctx, path, err)
 		return
 	}
-	if writePayload(ctx, payload, path) {
+	if writePayload(ctx, payload, path, ttl) {
 		log.Printf("Successfully handled GET %s with status %s", path, statusText)
 	}
 	if res.StatusCode < http.StatusInternalServerError {
-		client.cache.Set(key, payload, ttl)
+		client.cacheFor(path).Set(key, payload, ttl)
 	}
 }
 
@@ -356,7 +697,7 @@ func (client SupabaseClient) getCoursesAndSendResponse(
 	args.setDefaults()
 
 	key := buildCacheKey(ctx.Request)
-	if client.serveFromCache(ctx, path, key) {
+	if client.serveFromCache(ctx, path, key, ttl) {
 		return
 	}
 
@@ -382,10 +723,18 @@ func (client SupabaseClient) getInstructorsAndSendResponse(
 		sendInvalidArgsError(ctx, reflect.TypeOf(args), path, errors.New("cannot specify both instructorNames and instructorSlugs"))
 		return
 	}
+	// Rejected here rather than in the query builder, so a typo answers with
+	// the name that was wrong instead of quietly returning every column.
+	if args.Columns != "" {
+		if _, err := validateInstructorColumns(args.Columns); err != nil {
+			sendInvalidArgsError(ctx, reflect.TypeOf(args), path, err)
+			return
+		}
+	}
 	args.setDefaults()
 
 	key := buildCacheKey(ctx.Request)
-	if client.serveFromCache(ctx, path, key) {
+	if client.serveFromCache(ctx, path, key, ttl) {
 		return
 	}
 
@@ -414,19 +763,19 @@ func (client SupabaseClient) handleBaseEndpoint(ctx *gin.Context) {
 // Get a list of courses WITHOUT any section info.
 // Example: /v0/courses/?limit=10&offset=50&prefix=CMSC
 func (client SupabaseClient) handleGetCourses(ctx *gin.Context) {
-	path := "v0/courses"
+	path := "courses"
 	client.getCoursesAndSendResponse(ctx, []string{"*"}, path, coursesTTL)
 }
 
 // Get a minified list of courses. Returns only the course code and title.
 // Same arguments as `handleGetCourses`.
 func (client SupabaseClient) handleMinifiedCourses(ctx *gin.Context) {
-	path := "v0/courses/minified"
+	path := "courses/minified"
 	client.getCoursesAndSendResponse(ctx, []string{"course_code", "name"}, path, coursesTTL)
 }
 
 func (client SupabaseClient) handleCoursesWithSections(ctx *gin.Context) {
-	path := "v0/courses/withSections"
+	path := "courses/withSections"
 
 	var args CoursesWithSectionsArgs
 	if err := ctx.ShouldBindQuery(&args); err != nil {
@@ -446,7 +795,7 @@ func (client SupabaseClient) handleCoursesWithSections(ctx *gin.Context) {
 	args.setDefaults()
 
 	key := buildCacheKey(ctx.Request)
-	if client.serveFromCache(ctx, path, key) {
+	if client.serveFromCache(ctx, path, key, sectionsTTL) {
 		return
 	}
 
@@ -462,17 +811,26 @@ func (client SupabaseClient) handleCoursesWithSections(ctx *gin.Context) {
 
 // Get a list of sections for a given course.
 func (client SupabaseClient) handleGetSections(ctx *gin.Context) {
-	path := "v0/sections"
+	path := "sections"
 
 	var args SectionsArgs
 	if err := ctx.ShouldBindQuery(&args); err != nil {
 		sendInvalidArgsError(ctx, reflect.TypeOf(args), path, err)
 		return
 	}
+	// Both target `course_code`, and the query builder honors only one. Its own
+	// message rather than checkCourseFilters', which names a `number` parameter
+	// this endpoint does not have.
+	if args.CourseCodes != "" && args.CoursePrefix != "" {
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"error": "cannot specify both courseCodes and prefix",
+		})
+		return
+	}
 	args.setDefaults()
 
 	key := buildCacheKey(ctx.Request)
-	if client.serveFromCache(ctx, path, key) {
+	if client.serveFromCache(ctx, path, key, sectionsTTL) {
 		return
 	}
 
@@ -488,22 +846,22 @@ func (client SupabaseClient) handleGetSections(ctx *gin.Context) {
 
 // Get a list of instructors with their ratings.
 func (client SupabaseClient) handleGetInstructors(ctx *gin.Context) {
-	path := "v0/instructors"
+	path := "instructors"
 	client.getInstructorsAndSendResponse(ctx, path, "instructors", instructorsTTL)
 }
 
 // Get a list of instructors currently teaching courses.
 func (client SupabaseClient) handleGetActiveInstructors(ctx *gin.Context) {
-	path := "v0/instructors/active"
+	path := "instructors/active"
 	client.getInstructorsAndSendResponse(ctx, path, "active_instructors", instructorsTTL)
 }
 
 // Get a list of all 4-letter department codes.
 func (client SupabaseClient) handleGetDepartments(ctx *gin.Context) {
-	path := "v0/deptList"
+	path := "deptList"
 
 	key := buildCacheKey(ctx.Request)
-	if client.serveFromCache(ctx, path, key) {
+	if client.serveFromCache(ctx, path, key, departmentsTTL) {
 		return
 	}
 
@@ -515,4 +873,130 @@ func (client SupabaseClient) handleGetDepartments(ctx *gin.Context) {
 	}
 
 	client.writeAndCacheResponse(ctx, res, path, key, departmentsTTL)
+}
+
+// Get section-level grade distributions.
+// Example: /v0/grades?courseCodes=CMSC132&term=gte.202008&sortBy=term.desc
+func (client SupabaseClient) handleGetGrades(ctx *gin.Context) {
+	path := "grades"
+
+	var args GradesArgs
+	if err := ctx.ShouldBindQuery(&args); err != nil {
+		sendInvalidArgsError(ctx, reflect.TypeOf(args), path, err)
+		return
+	}
+	if err := checkCourseFilters(args.CourseCodes, args.Prefix, args.Number); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if err := checkInstructorFilters(args.Instructor, args.InstructorSlug, args.InstructorId); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	args.setDefaults()
+
+	key := buildCacheKey(ctx.Request)
+	if client.serveFromCache(ctx, path, key, gradesTTL) {
+		return
+	}
+
+	// Get data from DB
+	res, err := client.getGrades(args)
+	if err != nil {
+		sendInternalError(ctx, path, err)
+		return
+	}
+
+	client.writeAndCacheResponse(ctx, res, path, key, gradesTTL)
+}
+
+// Get grade distributions aggregated by course, by course and term, by course
+// and instructor, by instructor overall, or by instructor and term.
+// Example: /v0/grades/summary?groupBy=instructor&courseCodes=CMSC330&minStudents=100
+// Example: /v0/grades/summary?groupBy=instructorOverall&instructorSlug=shane-walsh
+func (client SupabaseClient) handleGetGradeSummary(ctx *gin.Context) {
+	path := "grades/summary"
+
+	var args GradeSummaryArgs
+	if err := ctx.ShouldBindQuery(&args); err != nil {
+		sendInvalidArgsError(ctx, reflect.TypeOf(args), path, err)
+		return
+	}
+	if err := checkCourseFilters(args.CourseCodes, args.Prefix, args.Number); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	// `getGradeSummary` honors instructorId, then instructorSlug, then
+	// instructor, in that fixed order -- so two of them means one is dropped.
+	// `/grades` has always rejected that; this endpoint accepted it and
+	// answered with rows the caller did not ask for.
+	if err := checkInstructorFilters(args.Instructor, args.InstructorSlug, args.InstructorId); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	args.setDefaults()
+
+	table := args.summaryTable()
+
+	// Reject filters the chosen grouping cannot honor, rather than dropping
+	// them. A caller who asks for one professor's CMSC132 numbers and silently
+	// receives their average across every course they have ever taught has no
+	// way to notice.
+	if isCourselessSummary(table) &&
+		(args.CourseCodes != "" || args.Prefix != "" || args.Number != "") {
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"error": "groupBy=" + args.GroupBy + " aggregates across every course, " +
+				"so courseCodes, prefix, and number do not apply; use groupBy=instructor " +
+				"for per-course figures",
+		})
+		return
+	}
+	if !isInstructorSummary(table) &&
+		(args.InstructorSlug != "" || args.InstructorId != 0 || args.Instructor != "") {
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"error": "instructor filters require groupBy=instructor, instructorOverall, " +
+				"or instructorTerm",
+		})
+		return
+	}
+	if !hasTermColumn(table) && len(args.Terms) > 0 {
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"error": "groupBy=" + args.GroupBy + " aggregates across every term, " +
+				"so term does not apply; use groupBy=term or groupBy=instructorTerm",
+		})
+		return
+	}
+
+	key := buildCacheKey(ctx.Request)
+	if client.serveFromCache(ctx, path, key, gradesTTL) {
+		return
+	}
+
+	// Get data from DB
+	res, err := client.getGradeSummary(args, table)
+	if err != nil {
+		sendInternalError(ctx, path, err)
+		return
+	}
+
+	client.writeAndCacheResponse(ctx, res, path, key, gradesTTL)
+}
+
+// Get every term for which grade data is available.
+func (client SupabaseClient) handleGetGradeTerms(ctx *gin.Context) {
+	path := "grades/terms"
+
+	key := buildCacheKey(ctx.Request)
+	if client.serveFromCache(ctx, path, key, gradesTTL) {
+		return
+	}
+
+	// Get data from DB
+	res, err := client.getGradeTerms()
+	if err != nil {
+		sendInternalError(ctx, path, err)
+		return
+	}
+
+	client.writeAndCacheResponse(ctx, res, path, key, gradesTTL)
 }

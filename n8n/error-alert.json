@@ -1,0 +1,55 @@
+{
+  "name": "Jupiterp triage error alert",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "err",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        -300,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $vars.DISCORD_WEBHOOK_URL }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ content: '**n8n workflow failed**: ' + $json.workflow.name + '\\n' + ($json.execution?.error?.message || 'no message') + '\\nReviews are not being triaged. They stay pending and the sweep escalates them, so nothing is lost, but the queue will grow.' }) }}",
+        "options": {}
+      },
+      "id": "notify",
+      "name": "Notify Discord",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -60,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Notify Discord",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "jupiterp"
+    }
+  ]
+}
