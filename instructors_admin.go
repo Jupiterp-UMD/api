@@ -100,10 +100,23 @@ func (m *ModerationServer) HandleInstructorSearch(ctx *gin.Context) {
 
 // MatchDecisionRequest is a moderator's answer for one queue entry.
 type MatchDecisionRequest struct {
-	// link, create, or dismiss.
-	Action string `json:"action" binding:"required,oneof=link create dismiss"`
-	// Required for `link`.
+	// link, merge, create, or dismiss.
+	Action string `json:"action" binding:"required,oneof=link merge create dismiss"`
+	// Required for `link`. For `merge`, the record to keep.
 	InstructorID *int64 `json:"instructor_id"`
+	// The duplicate records to fold into InstructorID. Required for `merge`,
+	// ignored otherwise.
+	//
+	// The survivor is named separately rather than taken as the first element,
+	// because which record survives is the consequential half of the decision
+	// -- it owns the slug every existing link points at -- and a positional
+	// convention is the kind of thing a caller gets backwards exactly once.
+	MergeIDs []int64 `json:"merge_ids"`
+	// Proceed with a merge the database refused as probably-two-people.
+	//
+	// Only ever set by a moderator answering the confirmation the previous
+	// unforced call returned; see the `needs_confirmation` branch in 0036.
+	Force bool `json:"force"`
 	// A note about who decided, for a caller that knows something the key does
 	// not -- a shared key operated by a named person, say.
 	//
@@ -117,16 +130,43 @@ type MatchDecisionRequest struct {
 // The work happens in `resolve_instructor_match`, in one transaction, because
 // the alias and the grade rows have to move together: repoint the alias alone
 // and the professor page is empty, move the rows alone and the next scrape
-// undoes it.
+// undoes it. A `merge` carries the same requirement one level further out: the
+// duplicates are folded together and the observed spelling is linked to the
+// survivor in that same transaction, so the queue entry can never be left open
+// pointing at ids that no longer exist.
+//
+// A merge the database judged to be two different people comes back 200 with
+// `status: needs_confirmation` and nothing written, not as an error. It is a
+// question for the moderator, and the answer is `force: true` on the retry.
 func (m *ModerationServer) HandleInstructorMatch(ctx *gin.Context) {
 	var req MatchDecisionRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "action must be one of link, create, dismiss"})
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "action must be one of link, merge, create, dismiss"})
 		return
 	}
-	if req.Action == "link" && req.InstructorID == nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "link requires instructor_id"})
+	if (req.Action == "link" || req.Action == "merge") && req.InstructorID == nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": req.Action + " requires instructor_id"})
 		return
+	}
+	if req.Action == "merge" {
+		if len(req.MergeIDs) == 0 {
+			ctx.JSON(http.StatusBadRequest, gin.H{"error": "merge requires merge_ids"})
+			return
+		}
+		// The SQL drops the survivor out of the merge list anyway, so this
+		// rejects only the request that names nothing else -- which is a
+		// no-op the caller almost certainly did not mean, not a merge.
+		others := 0
+		for _, id := range req.MergeIDs {
+			if id != *req.InstructorID {
+				others++
+			}
+		}
+		if others == 0 {
+			ctx.JSON(http.StatusBadRequest, gin.H{
+				"error": "merge_ids names only the record being kept"})
+			return
+		}
 	}
 
 	// The actor is whoever the key says, not whoever the body says.
@@ -161,6 +201,10 @@ func (m *ModerationServer) HandleInstructorMatch(ctx *gin.Context) {
 	}
 	if req.InstructorID != nil {
 		args["p_instructor_id"] = *req.InstructorID
+	}
+	if req.Action == "merge" {
+		args["p_merge_ids"] = req.MergeIDs
+		args["p_force"] = req.Force
 	}
 
 	var result map[string]any
