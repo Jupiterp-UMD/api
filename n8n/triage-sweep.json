@@ -1,0 +1,76 @@
+{
+  "name": "Jupiterp triage sweep",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 1
+            }
+          ]
+        }
+      },
+      "id": "cron",
+      "name": "Every hour",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -300,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $vars.JUPITERP_API }}/v1/admin/sweep",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $vars.ADMIN_KEY }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "sweep",
+      "name": "Run sweep",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -60,
+        0
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "notes": "Retries parked reviews, escalates timed-out ones, purges abandoned submissions, drains the email outbox, recomputes ratings. Cloud Scheduler on the same endpoint is a better home for this: an n8n outage should not also stop the email queue draining."
+    }
+  ],
+  "connections": {
+    "Every hour": {
+      "main": [
+        [
+          {
+            "node": "Run sweep",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "jupiterp"
+    },
+    {
+      "name": "moderation"
+    }
+  ]
+}

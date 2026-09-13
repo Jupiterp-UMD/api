@@ -1,0 +1,790 @@
+#!/usr/bin/env python3
+"""End-to-end checks against a running Jupiterp API.
+
+    python3 api/tools/smoke.py [--base http://localhost:8080]
+
+The Go tests cover the pure functions. This covers what they cannot: whether
+the handlers, PostgREST, the SQL functions, and the grants underneath them
+actually agree once they are wired together. Nearly every bug found during the
+grade-migration rehearsal lived in that seam and produced a 200 the whole way.
+
+Three kinds of check, in order of how quietly they used to fail:
+
+  reachability  every endpoint answers, and answers with data. Weak, but it is
+                what catches a missing grant -- RLS with no policy returns
+                `200 []`, which looks like "no results" and is really "no
+                access".
+
+  filters bind  a filter parameter actually constrains the result. This is the
+                one worth having. Gin's ShouldBindQuery ignores unknown query
+                parameters, so `instructorSlugs=` (plural) on an endpoint whose
+                parameter is `instructorSlug` (singular) returns every
+                professor with no error at all. A caller asking for one
+                professor's grades and receiving all of them cannot tell.
+
+  ordering      a paginated endpoint returns a stable set across pages. Without
+                an ORDER BY, Postgres may reuse rows between LIMIT/OFFSET
+                windows, so a full paginated read silently loses some and
+                duplicates others -- 2,976 rows came back as 2,336 distinct,
+                with a different set missing on each run.
+
+Exits non-zero if any check fails, so it can gate a deploy.
+"""
+
+import argparse
+import json
+import sys
+import time
+import uuid
+import urllib.error
+import urllib.parse
+import urllib.request
+
+TIMEOUT = 60
+
+# The prefix the read surface is served under. /v0 is still registered against
+# the same handlers as a compatibility alias -- `check_alias_parity` is what
+# holds the two together, so this can move without stranding old clients.
+READ = "/v1"
+ALIAS = "/v0"
+
+failures: list[str] = []
+passes = 0
+
+
+def get(base: str, path: str, params: dict | None = None):
+    """GET a path, returning (status, decoded body or raw text)."""
+    url = base.rstrip("/") + path
+    if params:
+        url += "?" + urllib.parse.urlencode(params)
+    request = urllib.request.Request(url, headers={"Accept": "application/json"})
+    try:
+        with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
+            body = response.read().decode("utf-8", "replace")
+            try:
+                return response.status, json.loads(body)
+            except json.JSONDecodeError:
+                return response.status, body
+    except urllib.error.HTTPError as error:
+        return error.code, error.read().decode("utf-8", "replace")
+    except Exception as error:  # noqa: BLE001 - connection refused, timeout, DNS
+        return 0, str(error)
+
+
+def check(name: str, ok: bool, detail: str = ""):
+    global passes
+    if ok:
+        passes += 1
+        print(f"  ok   {name}")
+    else:
+        failures.append(f"{name}: {detail}")
+        print(f"  FAIL {name}: {detail}")
+
+
+def rows_of(body):
+    """Endpoints answer either with a bare array or with a wrapped one."""
+    if isinstance(body, list):
+        return body
+    if isinstance(body, dict):
+        for key in ("entries", "instructors", "reviews", "data", "results"):
+            if isinstance(body.get(key), list):
+                return body[key]
+    return []
+
+
+def check_reachable(base: str):
+    print("\nreachability")
+    endpoints = [
+        (f"{READ}/courses", {"limit": "5"}),
+        (f"{READ}/courses/minified", {"limit": "5"}),
+        (f"{READ}/courses/withSections", {"courseCodes": "CMSC132"}),
+        (f"{READ}/deptList", None),
+        (f"{READ}/instructors", {"limit": "5"}),
+        (f"{READ}/instructors/active", {"limit": "5"}),
+        (f"{READ}/sections", {"courseCodes": "CMSC132"}),
+        (f"{READ}/grades", {"courseCodes": "CMSC132", "limit": "5"}),
+        (f"{READ}/grades/summary", {"courseCodes": "CMSC132"}),
+        (f"{READ}/grades/summary", {"groupBy": "instructorOverall", "instructorSlug": "clyde-kruskal"}),
+        (f"{READ}/grades/terms", None),
+        ("/v1/reviews", {"instructorSlug": "clyde-kruskal"}),
+    ]
+    for path, params in endpoints:
+        status, body = get(base, path, params)
+        label = path + (f"?{urllib.parse.urlencode(params)}" if params else "")
+        if status != 200:
+            check(label, False, f"HTTP {status} -- {str(body)[:120]}")
+            continue
+        # An empty array from a read endpoint is the shape a missing grant
+        # takes, so it is reported rather than passed over.
+        count = len(rows_of(body))
+        check(label, count > 0, f"HTTP 200 but zero rows (missing grant? RLS with no policy?)")
+
+
+def check_filters_bind(base: str):
+    """A filter must return strictly fewer rows than no filter, and the rows it
+    returns must all match. Both halves matter: a filter that is ignored passes
+    the second check trivially."""
+    print("\nfilters actually constrain")
+
+    cases = [
+        # path, filter params, field the filter is on, expected value
+        (f"{READ}/grades/summary",
+         {"groupBy": "instructor", "instructorSlug": "clyde-kruskal"},
+         "instructor_slug", "clyde-kruskal"),
+        (f"{READ}/instructors",
+         {"instructorSlugs": "clyde-kruskal"},
+         "slug", "clyde-kruskal"),
+        (f"{READ}/grades",
+         {"courseCodes": "CMSC132"},
+         "course_code", "CMSC132"),
+        (f"{READ}/sections",
+         {"courseCodes": "CMSC132"},
+         "course_code", "CMSC132"),
+    ]
+
+    for path, params, field, expected in cases:
+        label = f"{path} {urllib.parse.urlencode(params)}"
+
+        unfiltered_params = {k: v for k, v in params.items() if k in ("groupBy",)}
+        unfiltered_status, unfiltered = get(base, path, {**unfiltered_params, "limit": "100"})
+        filtered_status, filtered = get(base, path, params)
+
+        if filtered_status != 200 or unfiltered_status != 200:
+            check(label, False, f"HTTP {filtered_status}/{unfiltered_status}")
+            continue
+
+        filtered_rows = rows_of(filtered)
+        unfiltered_rows = rows_of(unfiltered)
+
+        if not filtered_rows:
+            check(label, False, "filter returned nothing; the fixture may be gone")
+            continue
+
+        # Every row matches. Rows that do not carry the field are not evidence
+        # either way, so they are skipped rather than counted as matches.
+        present = [r for r in filtered_rows if isinstance(r, dict) and field in r]
+        mismatched = [r for r in present if r.get(field) != expected]
+        if mismatched:
+            check(label, False,
+                  f"{len(mismatched)}/{len(present)} rows have {field} != {expected!r} "
+                  f"(e.g. {mismatched[0].get(field)!r}) -- the filter is being ignored")
+            continue
+
+        # Homogeneous output only means something if the unfiltered response was
+        # heterogeneous. Comparing row *counts* does not work: both responses hit
+        # the same page limit whenever the filter still matches more rows than a
+        # page holds, which reads as "did not narrow" on a filter that is fine.
+        others = [r for r in unfiltered_rows
+                  if isinstance(r, dict) and field in r and r.get(field) != expected]
+        if not others:
+            check(label, True, "")
+            print(f"       (inconclusive: unfiltered sample was already homogeneous on {field})")
+            continue
+
+        check(label, True)
+
+    # The specific trap: Gin ignores query parameters it does not recognise, so
+    # a misspelling is indistinguishable from no filter at all. Pinned here so
+    # that if strict binding is ever added, this flips and gets revisited.
+    status, body = get(base, f"{READ}/grades/summary",
+                       {"groupBy": "instructor", "nonexistentParam": "xyz", "limit": "5"})
+    check("unknown query parameters are tolerated (documented Gin behaviour)",
+          status == 200,
+          f"HTTP {status} -- if this is now a 400, strict binding was added; "
+          "update the docs, this is an improvement")
+
+
+def check_pagination_is_stable(base: str):
+    """Page through a listing twice and confirm the set of ids is identical.
+
+    An unordered LIMIT/OFFSET read is free to return the same row on two pages
+    and skip another entirely. It looks fine one page at a time."""
+    print("\npagination stability")
+
+    page_size = 100
+    pages = 5
+
+    def read_all():
+        seen = []
+        for page in range(pages):
+            status, body = get(base, f"{READ}/instructors",
+                               {"limit": str(page_size), "offset": str(page * page_size)})
+            if status != 200:
+                return None, f"HTTP {status} on page {page}"
+            rows = rows_of(body)
+            if not rows:
+                break
+            seen.extend(r.get("slug") for r in rows if isinstance(r, dict))
+        return seen, None
+
+    first, error = read_all()
+    if error:
+        check("paginated read", False, error)
+        return
+
+    distinct = len(set(first))
+    check("no duplicates across pages",
+          distinct == len(first),
+          f"read {len(first)} rows but only {distinct} distinct -- "
+          "rows are repeating across LIMIT/OFFSET windows, so others are being skipped "
+          "(the listing needs a total ORDER BY)")
+
+    second, error = read_all()
+    if error:
+        check("second paginated read", False, error)
+        return
+
+    check("two full reads agree",
+          set(first) == set(second),
+          f"first read saw {len(set(first))} distinct, second saw {len(set(second))}; "
+          f"{len(set(first) ^ set(second))} rows differ between identical requests")
+
+
+def preflight(base: str, method: str, path: str, origin: str):
+    """Send a CORS preflight, returning (status, Allow-Methods)."""
+    request = urllib.request.Request(base.rstrip("/") + path, method="OPTIONS")
+    request.add_header("Origin", origin)
+    request.add_header("Access-Control-Request-Method", method)
+    request.add_header("Access-Control-Request-Headers", "content-type,authorization")
+    try:
+        with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
+            return response.status, response.headers.get("Access-Control-Allow-Methods", "")
+    except urllib.error.HTTPError as error:
+        headers = error.headers.get("Access-Control-Allow-Methods", "") if error.headers else ""
+        return error.code, headers
+    except Exception as error:  # noqa: BLE001
+        return 0, str(error)
+
+
+def check_timeout_headroom(base: str, budget: float = 1.5):
+    """Warn on any endpoint approaching the `anon` role's statement timeout.
+
+    Every /v0 request authenticates as `anon`, which Supabase caps at
+    `statement_timeout = 3s` (authenticated gets 8s, service_role is unset).
+    Crossing it makes PostgREST return 500, and the handler passes that through.
+
+    This is a slow failure, not a sudden one: `grade_terms` was a plain view
+    doing a full aggregate over `grades`, and it simply got heavier every term
+    until it started timing out -- ~2s on a good run, over 3s on a bad one, with
+    nothing in between to notice. It is now materialized (migration 0029).
+
+    The API caches responses in memory, so a plain repeat request measures the
+    cache and always passes -- a check that cannot fail. Each request below
+    carries a unique throwaway parameter instead: the cache key is built from
+    the full query string, so a novel one always misses, while Gin's binding
+    ignores the parameter itself and the query is unchanged. That is the same
+    permissiveness `check_filters_bind` warns about, used deliberately here.
+
+    Timings include the network, so treat them as an early warning rather than a
+    measurement. Anything over half the budget is worth materializing before it
+    decides for you.
+    """
+    print(f"\ntimeout headroom (anon statement_timeout is 3s; warn above {budget}s)")
+
+    endpoints = [
+        f"{READ}/grades/terms",
+        f"{READ}/grades/summary?groupBy=instructorOverall&limit=500",
+        f"{READ}/grades/summary?groupBy=instructorTerm&limit=500",
+        f"{READ}/grades?limit=500",
+        f"{READ}/courses/withSections",
+        f"{READ}/instructors?limit=500",
+    ]
+
+    for endpoint in endpoints:
+        path, _, query = endpoint.partition("?")
+        params = dict(urllib.parse.parse_qsl(query)) if query else {}
+        params["_cachebust"] = uuid.uuid4().hex
+
+        started = time.monotonic()
+        status, body = get(base, path, params)
+        elapsed = time.monotonic() - started
+
+        if status != 200:
+            check(f"{endpoint} responds", False, f"HTTP {status}")
+            continue
+        # If the bust stopped working the timing is meaningless, so say so
+        # rather than reporting a reassuring 0.00s.
+        if elapsed < 0.005:
+            check(f"{endpoint} was actually measured", False,
+                  f"returned in {elapsed:.4f}s, which means it came from the API cache. "
+                  "The cache-busting parameter is no longer producing a distinct key")
+            continue
+        check(f"{endpoint} [{elapsed:.2f}s]",
+              elapsed < budget,
+              f"took {elapsed:.2f}s, over half the 3s anon statement_timeout -- "
+              "this is the shape grade_terms had before it started returning 500s. "
+              "Consider materializing it")
+
+
+def check_alias_parity(base: str):
+    """The read surface must answer identically under /v1 and /v0.
+
+    /v0 is a documented public API -- `@jupiterp/jupiterp` 1.0.0 calls it, and
+    so may anything built against api.jupiterp.com/v0 -- so it stays registered
+    against the same handlers rather than being retired. That only holds while
+    both prefixes really are the same handlers.
+
+    The way an alias breaks is not a 404, which anyone would notice. It is a new
+    endpoint added to one group and not the other, so /v0 keeps working while
+    quietly missing whatever shipped last. Comparing responses catches both that
+    and any divergence in what they return.
+
+    Reads are also checked for permissive CORS here. The write group carries an
+    origin allowlist, and reads registered into it by mistake would still pass
+    every other check in this file while failing for every third-party caller.
+    """
+    print(f"\nalias parity ({READ} vs {ALIAS})")
+
+    endpoints = [
+        ("/", None),
+        ("/courses", {"limit": "5"}),
+        ("/courses/minified", {"limit": "5"}),
+        ("/courses/withSections", {"courseCodes": "CMSC132"}),
+        ("/deptList", None),
+        ("/sections", {"courseCodes": "CMSC132"}),
+        ("/instructors", {"limit": "5"}),
+        ("/instructors/active", {"limit": "5"}),
+        ("/grades", {"courseCodes": "CMSC132", "limit": "5"}),
+        ("/grades/summary", {"courseCodes": "CMSC132"}),
+        ("/grades/terms", None),
+    ]
+
+    for suffix, params in endpoints:
+        current_status, current = get(base, READ + suffix, params)
+        alias_status, alias = get(base, ALIAS + suffix, params)
+
+        if current_status != 200:
+            check(f"{READ}{suffix}", False, f"HTTP {current_status}")
+            continue
+        if alias_status == 404:
+            check(f"{ALIAS}{suffix} still answers", False,
+                  f"404 -- the alias is missing this endpoint, so anything still on "
+                  f"{ALIAS} (including @jupiterp/jupiterp 1.0.0) breaks here")
+            continue
+        if alias_status != 200:
+            check(f"{ALIAS}{suffix}", False, f"HTTP {alias_status}")
+            continue
+
+        check(f"{suffix} identical on both prefixes",
+              current == alias,
+              "the two prefixes returned different payloads; they are no longer "
+              "the same handlers")
+
+    # Reads must stay open to every origin on both prefixes.
+    for prefix in (READ, ALIAS):
+        url = base.rstrip("/") + prefix + "/deptList"
+        request = urllib.request.Request(url)
+        request.add_header("Origin", "https://some-unrelated-site.example")
+        try:
+            with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
+                allowed = response.headers.get("Access-Control-Allow-Origin", "")
+                status = response.status
+        except urllib.error.HTTPError as error:
+            allowed, status = "", error.code
+        except Exception as error:  # noqa: BLE001
+            check(f"{prefix} reads are open to any origin", False, str(error))
+            continue
+
+        check(f"{prefix} reads are open to any origin",
+              status == 200 and allowed in ("*", "https://some-unrelated-site.example"),
+              f"HTTP {status}, Allow-Origin {allowed!r} -- reads appear to have picked up "
+              "the write group's origin allowlist, which breaks every third-party caller")
+
+
+def check_caching_and_pagination_headers(base: str):
+    """Two headers the read surface has to send, both of which were missing.
+
+    `Cache-Control`: every endpoint passed a TTL to its internal cache and told
+    no one, so browsers and CDNs refetched data the service itself considered
+    fresh for up to twelve hours.
+
+    `Access-Control-Expose-Headers`: `Content-Range` is not CORS-safelisted, so
+    without it a cross-origin `headers.get('Content-Range')` returns null. The
+    professor directory read that null as "no total", never rendered its count,
+    and never showed a "Load More" button -- capped at one page, silently.
+    """
+    print("\ncaching and pagination headers")
+
+    for path, params in [
+        (f"{READ}/instructors/active", {"limit": "1"}),
+        (f"{READ}/courses", {"limit": "1"}),
+        (f"{READ}/sections", {"courseCodes": "CMSC132"}),
+        (f"{READ}/deptList", None),
+        (f"{READ}/grades/terms", None),
+    ]:
+        url = base.rstrip("/") + path + (("?" + urllib.parse.urlencode(params)) if params else "")
+        try:
+            with urllib.request.urlopen(urllib.request.Request(url), timeout=TIMEOUT) as response:
+                cache_control = response.headers.get("Cache-Control", "")
+        except Exception as error:  # noqa: BLE001
+            check(f"{path} Cache-Control", False, str(error))
+            continue
+        check(f"{path} declares Cache-Control",
+              "max-age=" in cache_control,
+              f"got {cache_control!r} -- the endpoint has a TTL internally but tells "
+              "no browser or CDN about it")
+
+    # Exposure is origin-dependent, so it is asked for as a browser would.
+    url = base.rstrip("/") + f"{READ}/instructors/active?limit=1&count=true"
+    request = urllib.request.Request(url)
+    request.add_header("Origin", "https://www.jupiterp.com")
+    try:
+        with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
+            exposed = response.headers.get("Access-Control-Expose-Headers", "")
+            content_range = response.headers.get("Content-Range", "")
+    except Exception as error:  # noqa: BLE001
+        check("Content-Range is exposed to browsers", False, str(error))
+        return
+
+    check("count=true returns a real total, not '*'",
+          content_range and not content_range.endswith("/*"),
+          f"Content-Range is {content_range!r}")
+    check("Content-Range is exposed to browsers",
+          "Content-Range" in exposed,
+          f"Access-Control-Expose-Headers is {exposed!r} -- browser JavaScript will "
+          "read null and paginated pages will silently stop after one page")
+
+
+def check_column_selection(base: str):
+    """`columns` must narrow the response, and must reject anything else.
+
+    The value lands in PostgREST's `select`, so an unvalidated one could name
+    columns the endpoint does not publish or embed related tables entirely.
+    """
+    print("\ncolumn selection")
+
+    status, full = get(base, f"{READ}/instructors/active", {"limit": "5"})
+    status2, trimmed = get(base, f"{READ}/instructors/active",
+                           {"limit": "5", "columns": "slug,average_rating"})
+    if status != 200 or status2 != 200:
+        check("columns returns rows", False, f"HTTP {status}/{status2}")
+        return
+
+    trimmed_rows = rows_of(trimmed)
+    if not trimmed_rows:
+        check("columns returns rows", False, "empty response")
+        return
+
+    keys = set(trimmed_rows[0].keys())
+    check("columns returns only what was asked for",
+          keys == {"slug", "average_rating"},
+          f"got {sorted(keys)}")
+
+    full_rows = rows_of(full)
+    if full_rows:
+        check("omitting columns still returns the whole row",
+              len(full_rows[0].keys()) > 2,
+              f"default response has only {sorted(full_rows[0].keys())}")
+
+    # A name that is not a column must 400 rather than fall back to everything.
+    for bad in ("secret_field", "reviews(*)", "slug::text"):
+        status, _ = get(base, f"{READ}/instructors/active", {"limit": "1", "columns": bad})
+        check(f"columns={bad!r} is rejected",
+              status == 400,
+              f"HTTP {status} -- an unrecognised column must not silently return every column")
+
+
+def check_cors_preflight(base: str, origin: str):
+    """A browser sends OPTIONS before any JSON POST or PUT.
+
+    Two separate things can go wrong, and they need separate checks because a
+    403 is the *correct* answer for an origin the server does not serve:
+
+      - no OPTIONS route at all, so Gin 404s before CORS middleware runs. This
+        is origin-independent and breaks every browser client.
+      - the verb is missing from AllowMethods, so an allowed origin is still
+        refused. PUT was missing while it was the moderation route.
+    """
+    print(f"\nCORS preflight (origin {origin})")
+
+    routes = [("POST", "/v1/reviews"), ("PUT", "/v1/admin/reviews/x"),
+              ("POST", "/v1/admin/instructors/queue/1")]
+
+    for method, path in routes:
+        status, allowed = preflight(base, method, path, origin)
+
+        if status == 0:
+            check(f"preflight {method} {path}", False, allowed)
+            continue
+        if status == 404:
+            check(f"preflight {method} {path}", False,
+                  "404 -- no OPTIONS route is registered, so no browser can send this "
+                  "request regardless of origin")
+            continue
+        if status == 403:
+            check(f"preflight {method} {path}", False,
+                  f"403 -- {origin} is not in V1_ALLOWED_ORIGINS. Pass --origin with one "
+                  "the server serves, or add this one to the server's config")
+            continue
+        check(f"preflight {method} {path} advertises {method}",
+              method in allowed,
+              f"Allow-Methods is {allowed!r}, which omits {method} -- the browser will "
+              f"refuse to send it even though the route exists")
+
+    # Origin-independent: an unservable origin must still be *answered*, not
+    # 404'd. A 404 here means the route is missing rather than the origin
+    # rejected, which is the failure that hid behind a working curl.
+    status, _ = preflight(base, "POST", "/v1/reviews", "https://not-a-real-origin.example")
+    check("preflight for a disallowed origin is refused, not 404",
+          status != 404,
+          "404 means no OPTIONS route exists at all")
+
+
+def post(base: str, path: str, payload: dict, token: str | None = None):
+    """POST JSON, returning (status, decoded body or raw text)."""
+    url = base.rstrip("/") + path
+    data = json.dumps(payload).encode("utf-8")
+    headers = {"Content-Type": "application/json", "Accept": "application/json"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    request = urllib.request.Request(url, data=data, headers=headers, method="POST")
+    try:
+        with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
+            body = response.read().decode("utf-8", "replace")
+            try:
+                return response.status, json.loads(body)
+            except json.JSONDecodeError:
+                return response.status, body
+    except urllib.error.HTTPError as error:
+        return error.code, error.read().decode("utf-8", "replace")
+    except Exception as error:  # noqa: BLE001
+        return 0, str(error)
+
+
+def delete(base: str, path: str, token: str):
+    """DELETE with a bearer token, returning (status, body)."""
+    url = base.rstrip("/") + path
+    request = urllib.request.Request(
+        url, headers={"Authorization": f"Bearer {token}"}, method="DELETE")
+    try:
+        with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
+            body = response.read().decode("utf-8", "replace")
+            try:
+                return response.status, json.loads(body)
+            except json.JSONDecodeError:
+                return response.status, body
+    except urllib.error.HTTPError as error:
+        return error.code, error.read().decode("utf-8", "replace")
+    except Exception as error:  # noqa: BLE001
+        return 0, str(error)
+
+
+def check_review_lifecycle(base: str, admin_key: str, email: str, slug: str):
+    """
+    Walk one review from submission to withdrawal.
+
+    This is the check that the review path never had, and its absence is why
+    two features shipped dead. The manage key was minted at submission, stashed
+    in the verification email's payload, and read back during verification --
+    but the payload is cleared when the mail is sent, and a reviewer cannot
+    click a link in a mail that was never sent. Verification returned
+    `"manage_key": ""` for every reviewer, the site's `{#if}` hid the empty
+    string, and withdrawal was unreachable. Nothing errored, nothing logged.
+
+    Every individual endpoint answered correctly in isolation. Only walking the
+    sequence in order finds it, which is exactly what this does.
+
+    Needs the admin key: verification tokens are not readable from outside, so
+    the walk uses the moderation surface to drive the state it cannot reach as
+    a reviewer.
+    """
+    print("\nreview lifecycle")
+
+    if not admin_key:
+        check("lifecycle: admin key supplied", False,
+              "pass --admin-key to run the lifecycle walk; skipping the rest")
+        return
+
+    # 1. Submit.
+    status, body = post(base, "/v1/reviews", {
+        "instructor_slug": slug,
+        "rating": 4.5,
+        "title": "smoke test",
+        "body": "Automated smoke test submission; withdraw follows immediately.",
+        "email": email,
+    })
+    if status != 202:
+        check("lifecycle: submit accepted", False, f"expected 202, got {status}: {body}")
+        return
+    check("lifecycle: submit accepted", True)
+
+    # 2. Find it in the moderation queue. It is 'unverified' until the link is
+    #    followed, so this confirms the row exists before driving it further.
+    status, queue = get_with_auth(base, "/v1/admin/reviews", admin_key,
+                                  {"status": "unverified", "limit": "50"})
+    if status != 200:
+        check("lifecycle: queue readable", False, f"expected 200, got {status}: {queue}")
+        return
+    check("lifecycle: queue readable", True)
+
+    # 3. The queue must never carry identity columns. Cheap to assert here and
+    #    the consequence of getting it wrong is the whole privacy model.
+    leaked = set()
+    for row in rows_of(queue) or queue.get("reviews", []):
+        leaked |= {k for k in row if k in
+                   ("email_hash", "submit_ip_hash", "user_agent_hash", "edit_key_hash")}
+    check("lifecycle: queue exposes no identity columns", not leaked,
+          f"queue returned {sorted(leaked)}")
+
+    print("  note  verification and withdrawal need a mailbox; run "
+          "tools/smoke.py --lifecycle-token TOKEN once the link arrives")
+
+
+def check_verified_lifecycle(base: str, token: str):
+    """
+    Finish the walk from a verification token pasted out of the email.
+
+    Split from check_review_lifecycle because the middle of the flow goes
+    through a real mailbox. Given the token, this asserts the two properties
+    that were broken:
+
+      - verification returns a NON-EMPTY manage key;
+      - that key actually authorises withdrawal.
+    """
+    print("\nreview lifecycle (verified)")
+
+    status, body = get(base, f"/v1/reviews/verify/{urllib.parse.quote(token)}")
+    if status != 200 or not isinstance(body, dict):
+        check("lifecycle: verify succeeded", False, f"expected 200, got {status}: {body}")
+        return
+    check("lifecycle: verify succeeded", True)
+
+    manage_key = body.get("manage_key") or ""
+    check("lifecycle: verify returns a usable manage key", bool(manage_key),
+          "manage_key was empty -- the reviewer has no way to edit or withdraw, "
+          "and the site renders nothing rather than an error")
+    if not manage_key:
+        return
+
+    review_id = body.get("review_id") or body.get("id")
+    if not review_id:
+        print("  note  verify response carried no review id; skipping the withdraw step")
+        return
+
+    status, withdrawn = delete(base, f"/v1/reviews/{review_id}", manage_key)
+    check("lifecycle: manage key authorises withdrawal", status == 200,
+          f"expected 200, got {status}: {withdrawn}")
+
+    # A withdrawn review must not be readable through the public view.
+    status, public = get(base, "/v1/reviews", {"instructorSlug": "any"})
+    if status == 200:
+        ids = {row.get("id") for row in rows_of(public)}
+        check("lifecycle: withdrawn review is not published", review_id not in ids,
+              "a withdrawn review is still visible on the public endpoint")
+
+
+def get_with_auth(base: str, path: str, token: str, params: dict | None = None):
+    """GET with a bearer token."""
+    url = base.rstrip("/") + path
+    if params:
+        url += "?" + urllib.parse.urlencode(params)
+    request = urllib.request.Request(
+        url, headers={"Accept": "application/json", "Authorization": f"Bearer {token}"})
+    try:
+        with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
+            body = response.read().decode("utf-8", "replace")
+            try:
+                return response.status, json.loads(body)
+            except json.JSONDecodeError:
+                return response.status, body
+    except urllib.error.HTTPError as error:
+        return error.code, error.read().decode("utf-8", "replace")
+    except Exception as error:  # noqa: BLE001
+        return 0, str(error)
+
+
+def check_sweep_reports_failures(base: str, admin_key: str):
+    """
+    The sweep must not answer 200 when a component inside it failed.
+
+    It used to return 200 with a body of counts regardless, which is how the
+    rating recompute stayed broken for weeks: Cloud Scheduler saw a success,
+    the only signal was a log line, and nobody was reading it. A partial
+    failure now answers 207 and names what broke.
+    """
+    print("\nsweep")
+
+    if not admin_key:
+        check("sweep: admin key supplied", False, "pass --admin-key to check the sweep")
+        return
+
+    status, body = post(base, "/v1/admin/sweep", {}, token=admin_key)
+    if status not in (200, 207):
+        check("sweep: reachable", False, f"expected 200 or 207, got {status}: {body}")
+        return
+    check("sweep: reachable", True)
+
+    if not isinstance(body, dict):
+        check("sweep: reports a status", False, f"body was not an object: {body}")
+        return
+
+    check("sweep: body carries an explicit ok flag", "ok" in body,
+          "no `ok` field; a caller cannot tell a clean run from a broken one")
+
+    if status == 200:
+        check("sweep: 200 means everything succeeded", body.get("ok") is True,
+              f"answered 200 with ok={body.get('ok')} and failures={body.get('failures')}")
+    else:
+        check("sweep: 207 names what failed", bool(body.get("failures")),
+              "answered 207 without saying which component failed")
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__,
+                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--base", default="http://localhost:8080",
+                        help="API base URL (default: http://localhost:8080)")
+    parser.add_argument("--origin", default="http://localhost:5173",
+                        help="Origin to send on CORS preflights. Must be one the server "
+                             "serves (V1_ALLOWED_ORIGINS); use https://www.jupiterp.com "
+                             "against production. Default: http://localhost:5173")
+    parser.add_argument("--admin-key", default="",
+                        help="REVIEW_ADMIN_KEY, to run the review-lifecycle and sweep "
+                             "checks. Without it those are skipped.")
+    parser.add_argument("--lifecycle-email", default="",
+                        help="A @umd.edu address to submit the smoke review as. "
+                             "Required for the lifecycle walk.")
+    parser.add_argument("--lifecycle-slug", default="",
+                        help="Instructor slug to file the smoke review against.")
+    parser.add_argument("--lifecycle-token", default="",
+                        help="A verification token from the smoke review's email. "
+                             "Runs only the second half of the walk: verify, then "
+                             "withdraw with the manage key it returns.")
+    args = parser.parse_args()
+
+    print(f"smoke checks against {args.base}")
+
+    status, _ = get(args.base, f"{READ}/deptList")
+    if status == 0:
+        print(f"\ncannot reach {args.base}. Is the API running?", file=sys.stderr)
+        return 2
+
+    check_reachable(args.base)
+    check_filters_bind(args.base)
+    check_pagination_is_stable(args.base)
+    check_timeout_headroom(args.base)
+    check_alias_parity(args.base)
+    check_caching_and_pagination_headers(args.base)
+    check_column_selection(args.base)
+    check_cors_preflight(args.base, args.origin)
+
+    if args.lifecycle_token:
+        check_verified_lifecycle(args.base, args.lifecycle_token)
+    elif args.admin_key and args.lifecycle_email and args.lifecycle_slug:
+        check_review_lifecycle(args.base, args.admin_key,
+                               args.lifecycle_email, args.lifecycle_slug)
+    if args.admin_key:
+        check_sweep_reports_failures(args.base, args.admin_key)
+
+    print()
+    if failures:
+        print(f"{len(failures)} failed, {passes} passed\n")
+        for failure in failures:
+            print(f"  - {failure}")
+        return 1
+    print(f"all {passes} checks passed")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

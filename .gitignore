@@ -30,3 +30,13 @@ go.work.sum
 # Editor/IDE
 # .idea/
 # .vscode/
+
+# Compiled server binaries. These were committed for a while; do not let them
+# back in -- they are ~53MB together and are rebuilt by every `go build`.
+/jupiterp-api
+/gin
+
+# macOS and Python noise
+.DS_Store
+__pycache__/
+*.py[cod]

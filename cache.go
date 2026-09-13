@@ -7,7 +7,23 @@ import (
 	"time"
 )
 
-const defaultCacheCapacity = 124
+// Entries held per cache.
+//
+// This was 124, sized for a key space of department prefixes and a handful of
+// course codes. Professor pages change that shape entirely: a per-slug key for
+// every professor, plus a per-professor grade summary and a per-professor term
+// series. At 124 entries that space thrashes to a near-zero hit rate and every
+// request reaches Supabase, which is the opposite of what the cache is for.
+const defaultCacheCapacity = 4096
+
+// Course search runs on every page load and is the hottest path in the API.
+// It gets its own cache so that a burst of professor-page traffic - which has
+// a much larger key space - cannot evict it.
+//
+// The caches are per Cloud Run instance and there is no cross-instance
+// invalidation; that is fine for data whose TTL is measured in hours, and is
+// the reason review reads will need a much shorter TTL when they arrive.
+const courseCacheCapacity = 2048
 
 type cachedPayload struct {
 	status int
