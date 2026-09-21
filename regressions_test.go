@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -1039,5 +1040,99 @@ func TestManageKeyEmailLinksToTheWithdrawalPage(t *testing.T) {
 	// it is the only part many people read before deciding to keep the mail.
 	if !strings.Contains(html, "only way to withdraw") {
 		t.Error("the preheader does not say the key is the only way to withdraw")
+	}
+}
+
+/* ============= a refused key is not a refused message ================== */
+
+// A provider rejecting the *credentials* must not destroy the message.
+//
+// Brevo answers an unauthorised caller with 401 -- a bad key, a rotated key, or
+// an IP that is not on the account's authorised list. That status arrived in
+// the `>= 400 && < 500` branch, which abandons: the row is closed AND its
+// recipient is nulled in the same write. So four verification emails were
+// discarded for a deployment fault that had nothing to do with them, their
+// reviews sat `unverified` forever, and fixing the key changed nothing, because
+// by then there was no address left to send to and no resend path.
+//
+// The rule this pins: a 4xx that describes the caller defers, a 4xx that
+// describes the message abandons.
+func TestRefusedCredentialsDeferRatherThanAbandon(t *testing.T) {
+	cases := []struct {
+		status int
+		want   deliveryOutcome
+		why    string
+	}{
+		{200, deliverySent, "accepted"},
+		{201, deliverySent, "accepted"},
+		{401, deliveryDeferred, "bad API key, or an IP not on the allowlist"},
+		{403, deliveryDeferred, "key lacks permission; fixable without touching the message"},
+		{429, deliveryDeferred, "rate limited"},
+		{402, deliveryDeferred, "daily cap"},
+		{400, deliveryAbandoned, "malformed request or rejected address"},
+		{404, deliveryAbandoned, "wrong endpoint"},
+		{500, deliveryDeferred, "provider fault, retry"},
+		{503, deliveryDeferred, "provider fault, retry"},
+	}
+	for _, tc := range cases {
+		got, _ := classifyResponse(tc.status, "")
+		if got != tc.want {
+			t.Errorf("HTTP %d (%s): outcome %v, want %v", tc.status, tc.why, got, tc.want)
+		}
+	}
+}
+
+// The provider's explanation has to survive into `last_error`.
+//
+// Recording only the status turned every content-level rejection into the
+// string "permanent HTTP 400" -- on a row whose address had already been nulled
+// by the same write. The failure was unexplained and the evidence was gone
+// together, which is why four abandoned sends could not be told apart. Brevo is
+// specific when its answer is actually read: "Sender email is not valid", or an
+// unrecognised-IP message naming the address to allowlist.
+func TestFailureReasonKeepsTheProviderExplanation(t *testing.T) {
+	const brevo = `{"code":"invalid_parameter","message":"Sender email is not valid"}`
+
+	for _, status := range []int{400, 401, 402, 429, 500} {
+		_, reason := classifyResponse(status, ": "+brevo)
+		if !strings.Contains(reason, "Sender email is not valid") {
+			t.Errorf("HTTP %d records %q, which does not carry the provider's reason",
+				status, reason)
+		}
+		if !strings.Contains(reason, http.StatusText(status)) &&
+			!strings.Contains(reason, "HTTP") {
+			t.Errorf("HTTP %d records %q, which does not identify the status", status, reason)
+		}
+	}
+}
+
+// providerDetail reads the body, bounded, and stays empty-safe.
+func TestProviderDetailIsBoundedAndOptional(t *testing.T) {
+	read := func(body string) string {
+		res := httptest.NewRecorder()
+		res.Body = bytes.NewBufferString(body)
+		return providerDetail(res.Result())
+	}
+
+	if got := read(""); got != "" {
+		t.Errorf("an empty body produced %q, want no detail at all", got)
+	}
+	if got := read("   \n  "); got != "" {
+		t.Errorf("a whitespace body produced %q, want no detail at all", got)
+	}
+
+	detail := read(`{"message":"Sender email is not valid"}`)
+	if !strings.HasPrefix(detail, ": ") {
+		t.Errorf("detail %q is not prefixed for appending to a status line", detail)
+	}
+	if !strings.Contains(detail, "Sender email is not valid") {
+		t.Errorf("detail %q lost the message", detail)
+	}
+
+	// A provider that answers with something enormous must not put all of it
+	// in a log line and a database column.
+	huge := read(strings.Repeat("x", 4*providerDetailLimit))
+	if len(huge) > providerDetailLimit+len(": ") {
+		t.Errorf("detail is %d bytes, above the %d-byte cap", len(huge), providerDetailLimit)
 	}
 }

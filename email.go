@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
@@ -178,6 +179,14 @@ func (e *EmailSender) deliver(row outboxRow) (deliveryOutcome, error) {
 	if e.cfg.BrevoAPIKey == "" {
 		return deliveryDeferred, e.reschedule(row, "BREVO_API_KEY not configured")
 	}
+	// EMAIL_FROM_ADDRESS has no default, so an unset one is an empty sender.
+	// Brevo answers that with a bare 400 indistinguishable from a malformed
+	// recipient, which the 4xx rule below would then abandon. Checked here
+	// alongside the API key, for the same reason and with the same outcome: a
+	// missing deployment variable defers the mail until someone sets it.
+	if e.cfg.EmailFrom == "" {
+		return deliveryDeferred, e.reschedule(row, "EMAIL_FROM_ADDRESS not configured")
+	}
 	if row.Recipient == nil || *row.Recipient == "" {
 		return deliveryAbandoned, e.abandon(row, "no recipient")
 	}
@@ -213,25 +222,92 @@ func (e *EmailSender) deliver(row outboxRow) (deliveryOutcome, error) {
 	}
 	defer res.Body.Close()
 
-	switch {
-	case res.StatusCode >= 200 && res.StatusCode < 300:
-		return deliverySent, e.markSent(row)
+	// Read before classifying, so the recorded reason says why rather than
+	// only what. See providerDetail.
+	outcome, reason := classifyResponse(res.StatusCode, providerDetail(res))
 
-	case res.StatusCode == http.StatusTooManyRequests || res.StatusCode == 402:
+	switch outcome {
+	case deliverySent:
+		return deliverySent, e.markSent(row)
+	case deliveryAbandoned:
+		return deliveryAbandoned, e.abandon(row, reason)
+	default:
+		log.Printf("email %d deferred: %s", row.ID, reason)
+		return deliveryDeferred, e.reschedule(row, reason)
+	}
+}
+
+// classifyResponse decides what a provider status means for a queued message,
+// and what to record about it.
+//
+// Split from the sending so the rule can be tested without a provider. The
+// distinction it draws is the difference between a reviewer who gets their
+// confirmation link late and one whose review is stuck `unverified` forever:
+// a deferred message keeps its recipient and is retried by the sweep, while an
+// abandoned one has its address nulled in the same write.
+func classifyResponse(status int, detail string) (deliveryOutcome, string) {
+	switch {
+	case status >= 200 && status < 300:
+		return deliverySent, ""
+
+	case status == http.StatusTooManyRequests || status == 402:
 		// Rate limited, or the plan's daily allowance is exhausted. Not a
 		// failure: the message waits. This is the case the whole outbox exists
-		// for, so it is logged distinctly rather than as a generic error.
-		log.Printf("email %d deferred: provider cap or rate limit (HTTP %d)", row.ID, res.StatusCode)
-		return deliveryDeferred, e.reschedule(row, fmt.Sprintf("provider cap or rate limit: HTTP %d", res.StatusCode))
+		// for.
+		return deliveryDeferred, fmt.Sprintf("provider cap or rate limit: HTTP %d%s", status, detail)
 
-	case res.StatusCode >= 400 && res.StatusCode < 500:
+	case status == http.StatusUnauthorized || status == http.StatusForbidden:
+		// The credentials were refused, not the message. A bad API key, a key
+		// rotated out from under the service, or -- Brevo specifically -- a
+		// caller whose IP is not on the account's authorised list.
+		//
+		// Deferred rather than abandoned, a deliberate exception to the 4xx
+		// rule below. Each of those is a deployment fault that a person fixes
+		// and that says nothing about this particular message, but abandoning
+		// burns the row AND nulls the recipient, so the mail could never be
+		// sent even after the key was corrected. Four verification emails were
+		// lost exactly that way, leaving their reviews stuck `unverified` with
+		// no address left to retry against and no resend path.
+		//
+		// The backoff still bounds it: after the 25h step the row is abandoned
+		// as "retries exhausted", so a key nobody ever fixes does not queue
+		// mail indefinitely.
+		return deliveryDeferred, fmt.Sprintf("provider rejected the credentials: HTTP %d%s", status, detail)
+
+	case status >= 400 && status < 500:
 		// A malformed request or a rejected address will not become valid on
 		// a retry, so retrying only burns allowance.
-		return deliveryAbandoned, e.abandon(row, fmt.Sprintf("permanent HTTP %d", res.StatusCode))
+		return deliveryAbandoned, fmt.Sprintf("permanent HTTP %d%s", status, detail)
 
 	default:
-		return deliveryDeferred, e.reschedule(row, fmt.Sprintf("HTTP %d", res.StatusCode))
+		return deliveryDeferred, fmt.Sprintf("HTTP %d%s", status, detail)
 	}
+}
+
+// How much of a provider error body to keep. Enough for Brevo's longest
+// message, short enough that `last_error` and a log line stay readable.
+const providerDetailLimit = 512
+
+// providerDetail returns the provider's own explanation of a failure, prefixed
+// for appending to a status line, or "" if there was nothing to read.
+//
+// The response body is the only thing that distinguishes an unverified sender
+// from a malformed recipient from a blocked IP, and all three arrive as a bare
+// 400. Recording just the number meant `last_error` read "permanent HTTP 400"
+// on a row whose address had already been nulled -- the failure was unexplained
+// and the evidence was gone in the same write. Brevo is specific when asked:
+// "Sender email is not valid", or an unrecognised-IP message naming the exact
+// address to allowlist.
+func providerDetail(res *http.Response) string {
+	body, err := io.ReadAll(io.LimitReader(res.Body, providerDetailLimit))
+	if err != nil {
+		return ""
+	}
+	trimmed := strings.TrimSpace(string(body))
+	if trimmed == "" {
+		return ""
+	}
+	return ": " + trimmed
 }
 
 func (e *EmailSender) markSent(row outboxRow) error {

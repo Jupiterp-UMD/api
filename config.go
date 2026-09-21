@@ -205,6 +205,9 @@ func (c *Config) Validate() {
 	if c.BrevoAPIKey == "" {
 		log.Printf("WARNING: BREVO_API_KEY is empty; verification email will be queued but never sent")
 	}
+	if c.EmailFrom == "" {
+		log.Printf("WARNING: EMAIL_FROM_ADDRESS is empty; verification email will be queued but never sent")
+	}
 	if c.TriageWebhookURL == "" {
 		log.Printf("Automated triage is off; every verified review goes to the human queue")
 	}
