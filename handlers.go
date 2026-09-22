@@ -20,6 +20,9 @@ const (
 	instructorsTTL time.Duration = 12 * time.Hour
 	departmentsTTL time.Duration = 2 * time.Hour
 	sectionsTTL    time.Duration = 15 * time.Minute
+	// Matches sectionsTTL, so the site's term label changes over with the
+	// sections it describes rather than hours after them.
+	termTTL time.Duration = 15 * time.Minute
 	// Grade data changes once a term, when a new records request is fulfilled.
 	gradesTTL time.Duration = 12 * time.Hour
 	// Deliberately short. The cache is per Cloud Run instance with no
@@ -873,6 +876,25 @@ func (client SupabaseClient) handleGetDepartments(ctx *gin.Context) {
 	}
 
 	client.writeAndCacheResponse(ctx, res, path, key, departmentsTTL)
+}
+
+// Get the term that the course and section data describes.
+func (client SupabaseClient) handleGetTerm(ctx *gin.Context) {
+	path := "term"
+
+	key := buildCacheKey(ctx.Request)
+	if client.serveFromCache(ctx, path, key, termTTL) {
+		return
+	}
+
+	// Get data from DB
+	res, err := client.getTerm()
+	if err != nil {
+		sendInternalError(ctx, path, err)
+		return
+	}
+
+	client.writeAndCacheResponse(ctx, res, path, key, termTTL)
 }
 
 // Get section-level grade distributions.

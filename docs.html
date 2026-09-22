@@ -73,6 +73,11 @@
         <td style="text-align:left"><a href="#-v1-deptlist-">jump</a></td>
         </tr>
         <tr>
+        <td style="text-align:left"><code>/v1/term</code></td>
+        <td style="text-align:left">Get the term that course and section data is from</td>
+        <td style="text-align:left"><a href="#-v1-term-">jump</a></td>
+        </tr>
+        <tr>
         <td style="text-align:left"><code>/v1/grades</code></td>
         <td style="text-align:left">Get grade distributions for individual sections</td>
         <td style="text-align:left"><a href="#-v1-grades-">jump</a></td>
@@ -837,6 +842,41 @@
         </tr>
         </tbody>
         </table>
+        <h3 id="-v1-term-"><code>/v1/term</code></h3>
+        <p><a href="#endpoints">(back to endpoints)</a></p>
+        <p>Gets the term that <code>/v1/courses</code>, <code>/v1/courses/withSections</code> and <code>/v1/sections</code> describe. Course and section data covers one term at a time, and this is it. Takes no parameters. The response is an array for consistency with the other endpoints, and holds a single element.</p>
+        <h4 id="output-7">Output</h4>
+        <table>
+        <thead>
+        <tr>
+        <th style="text-align:left">field</th>
+        <th style="text-align:center">type</th>
+        <th style="text-align:left">description</th>
+        </tr>
+        </thead>
+        <tbody>
+        <tr>
+        <td style="text-align:left"><code>term</code></td>
+        <td style="text-align:center">int</td>
+        <td style="text-align:left">Six-digit term code: the year, then the month the term starts. <code>202608</code> is Fall 2026, <code>202701</code> is Spring 2027.</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>updated_at</code></td>
+        <td style="text-align:center">string</td>
+        <td style="text-align:left">When the term was last confirmed by a scrape, as an ISO 8601 timestamp.</td>
+        </tr>
+        </tbody>
+        </table>
+        <h4 id="example">Example</h4>
+        <p>Request: <code>GET http://api.jupiterp.com/v1/term</code></p>
+        <p>Response:</p>
+<pre><code>[
+  {
+    &quot;term&quot;: 202608,
+    &quot;updated_at&quot;: &quot;2026-09-21T23:35:02.418562+00:00&quot;
+  }
+]
+</code></pre>
         <h3 id="-v1-grades-"><code>/v1/grades</code></h3>
         <p><a href="#endpoints">(back to endpoints)</a></p>
         <p>Gets grade distributions for individual course sections, as released by the University Registrar under the Maryland Public Information Act. Data covers fall and spring terms from Fall 2010 through Spring 2026; winter and summer terms were not released.</p>
@@ -908,7 +948,7 @@
         </tr>
         </tbody>
         </table>
-        <h4 id="output-7">Output</h4>
+        <h4 id="output-8">Output</h4>
         <table>
         <thead>
         <tr>
@@ -1107,7 +1147,7 @@
         </tr>
         </tbody>
         </table>
-        <h4 id="output-8">Output</h4>
+        <h4 id="output-9">Output</h4>
         <p>All groupings return the summed grade buckets (<code>a_plus</code> through <code>other</code>), <code>total</code>, <code>graded</code>, and <code>gpa</code>, defined exactly as on <code>/v1/grades</code>. In addition:</p>
         <table>
         <thead>
@@ -1228,7 +1268,7 @@
         <h3 id="-v1-grades-terms-"><code>/v1/grades/terms</code></h3>
         <p><a href="#endpoints">(back to endpoints)</a></p>
         <p>Gets every term for which grade data has been loaded, newest first. Takes no parameters. Useful for discovering coverage before querying, since the released data covers fall and spring only.</p>
-        <h4 id="output-9">Output</h4>
+        <h4 id="output-10">Output</h4>
         <table>
         <thead>
         <tr>
@@ -1270,7 +1310,7 @@
         </tr>
         </tbody>
         </table>
-        <h4 id="example">Example</h4>
+        <h4 id="example-1">Example</h4>
         <p>Request: <code>GET http://api.jupiterp.com/v1/grades/terms</code></p>
         <p>Response:</p>
 <pre><code>[

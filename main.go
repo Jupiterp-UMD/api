@@ -135,6 +135,8 @@ func main() {
 
 		get("/deptList", client.handleGetDepartments) // list of all 4-letter department codes
 
+		get("/term", client.handleGetTerm) // term the course and section data is from
+
 		get("/sections", client.handleGetSections) // sections for courses
 
 		get("/instructors", client.handleGetInstructors)              // all instructors with ratings

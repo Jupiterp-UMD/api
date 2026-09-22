@@ -33,6 +33,7 @@ endpoint across both, so they cannot quietly drift apart.
 | `/v1/instructors` | Get a list of instructors and their ratings | [jump](#-v1-instructors-) |
 | `/v1/instructors/active` | Get a list of instructors actively teaching a course | [jump](#-v1-instructors-active-) |
 | `/v1/deptList` | Get a list of 4-letter department codes | [jump](#-v1-deptlist-) |
+| `/v1/term` | Get the term that course and section data is from | [jump](#-v1-term-) |
 | `/v1/grades` | Get grade distributions for individual sections | [jump](#-v1-grades-) |
 | `/v1/grades/summary` | Get grade distributions aggregated by course, term, or instructor | [jump](#-v1-grades-summary-) |
 | `/v1/grades/terms` | Get the terms for which grade data is available | [jump](#-v1-grades-terms-) |
@@ -516,6 +517,34 @@ None
 | :-- | :--: | :-- |
 | `dept_code` | string | A unique 4-letter department code |
 | `name` | string | The name of the department |
+
+### `/v1/term`
+
+[(back to endpoints)](#endpoints)
+
+Gets the term that `/v1/courses`, `/v1/courses/withSections` and `/v1/sections` describe. Course and section data covers one term at a time, and this is it. Takes no parameters. The response is an array for consistency with the other endpoints, and holds a single element.
+
+#### Output
+
+| field | type | description |
+| :-- | :--: | :-- |
+| `term` | int | Six-digit term code: the year, then the month the term starts. `202608` is Fall 2026, `202701` is Spring 2027. |
+| `updated_at` | string | When the term was last confirmed by a scrape, as an ISO 8601 timestamp. |
+
+#### Example
+
+Request: `GET http://api.jupiterp.com/v1/term`
+
+Response:
+```
+[
+  {
+    "term": 202608,
+    "updated_at": "2026-09-21T23:35:02.418562+00:00"
+  }
+]
+```
+
 ### `/v1/grades` 
 
 [(back to endpoints)](#endpoints)

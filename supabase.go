@@ -323,6 +323,14 @@ func (s SupabaseClient) getDepartments() (*http.Response, error) {
 	return s.request("departments", params.Encode())
 }
 
+// Get the term the course and section data was scraped from.
+func (s SupabaseClient) getTerm() (*http.Response, error) {
+	// SELECT term, updated_at FROM catalog_term
+	params := url.Values{}
+	params.Set("select", "term,updated_at")
+	return s.request("catalog_term", params.Encode())
+}
+
 // Apply the shared course-matching filters used by both grade endpoints. Only
 // one of `courseCodes`, `prefix`, or `number` is honored; handlers reject
 // requests that set more than one.
