@@ -23,8 +23,6 @@ package main
 //go:generate go run ./tools/docsgen
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"log"
 	"net/http"
 	"strings"
@@ -43,7 +41,7 @@ func main() {
 	// Initialize Gin instance and middleware
 	r := gin.New()
 	r.Use(gin.Recovery())
-	r.Use(requestLogger())
+	r.Use(requestLogger(cfg.EmailPepper))
 
 	// Create SupabaseClient to connect with DB
 	client := SupabaseClient{
@@ -241,6 +239,7 @@ func main() {
 		admin := v1.Group("/admin")
 		admin.GET("/reviews", AdminAuth(cfg), moderationServer.HandleQueue)
 		admin.GET("/reports", AdminAuth(cfg), moderationServer.HandleReports)
+		admin.POST("/reports/:id", AdminAuth(cfg), moderationServer.HandleResolveReport)
 		admin.PUT("/reviews/:id", ModerationAuth(cfg), moderationServer.HandleDecide)
 		admin.POST("/sweep", AdminAuth(cfg), moderationServer.HandleSweep)
 
@@ -258,6 +257,7 @@ func main() {
 			"/reviews",
 			"/reviews/:id",
 			"/reports",
+			"/reports/:id",
 			"/sweep",
 			"/instructors/queue",
 			"/instructors/queue/:id",
@@ -290,21 +290,33 @@ func handlePreflight(ctx *gin.Context) {
 // path it is what makes an abuse incident investigable, so it is no longer a
 // TODO. Deliberately does not log query strings or bodies on /v1: those carry
 // email addresses and tokens.
-func requestLogger() gin.HandlerFunc {
+//
+// Nor the raw path, for the same reason: the verification token is a path
+// segment, `/v1/reviews/verify/:token`, so logging the URL path wrote a live
+// 48-hour bearer credential into the log sink on every confirmation. The route
+// template is logged instead, which says which endpoint was hit and nothing
+// about the caller's capability. A request that matched no route has no
+// template and is logged by path, since nothing it could carry opens anything.
+func requestLogger(pepper string) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		start := time.Now()
-		path := ctx.Request.URL.Path
 		ctx.Next()
 
+		route := ctx.FullPath()
+		if route == "" {
+			route = ctx.Request.URL.Path
+		}
 		fields := []any{
 			ctx.Request.Method,
-			path,
+			route,
 			ctx.Writer.Status(),
 			time.Since(start).Round(time.Millisecond),
 		}
-		if strings.HasPrefix(path, "/v1") {
-			log.Printf("%s %s -> %d in %s ip=%s", append(fields, hashedIPForLog(ctx))...)
-			return
+		if strings.HasPrefix(route, "/v1") {
+			if ip := hashedIPForLog(ctx, pepper); ip != "" {
+				log.Printf("%s %s -> %d in %s ip=%s", append(fields, ip)...)
+				return
+			}
 		}
 		log.Printf("%s %s -> %d in %s", fields...)
 	}
@@ -312,11 +324,19 @@ func requestLogger() gin.HandlerFunc {
 
 // hashedIPForLog gives a stable per-client identifier for correlating abuse
 // without writing raw addresses into a log sink.
-func hashedIPForLog(ctx *gin.Context) string {
+//
+// Peppered, and absent without a pepper. A bare SHA-256 of an IPv4 address is
+// not a pseudonym: the whole address space is four billion hashes, which is an
+// afternoon on a laptop, so the unpeppered digest was the address with extra
+// steps. With the pepper it matches `submit_ip_hash`'s construction, so a log
+// line and a review row can still be correlated during an investigation.
+func hashedIPForLog(ctx *gin.Context, pepper string) string {
+	if pepper == "" {
+		return ""
+	}
 	ip := clientIP(ctx)
 	if ip == "" {
 		return "unknown"
 	}
-	sum := sha256.Sum256([]byte(ip))
-	return hex.EncodeToString(sum[:])[:12]
+	return hashOpaque(ip, pepper)[:12]
 }

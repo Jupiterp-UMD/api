@@ -878,7 +878,7 @@
         </tr>
         <tr>
         <td style="text-align:left"><code>instructorSource</code> (optional)</td>
-        <td style="text-align:left">A comma-separated list of <code>instructor_source</code> values to include. Defaults to all. Use <code>reported,lead</code> to exclude attributions carried across lecture groups.</td>
+        <td style="text-align:left">A comma-separated list of <code>instructor_source</code> values to include. Defaults to all, <strong>except</strong> when filtering by <code>instructor</code>, <code>instructorSlug</code>, or <code>instructorId</code>, where it defaults to <code>reported,lead,testudo</code> — the same sections the instructor summaries count. <code>course</code> attributions are carried from elsewhere in the course and are sometimes wrong; name every tier, <code>reported,lead,testudo,course</code>, to include them.</td>
         <td style="text-align:left"><code>instructorSource=reported</code></td>
         </tr>
         <tr>
@@ -1020,6 +1020,7 @@
         <p><a href="#endpoints">(back to endpoints)</a></p>
         <p>Gets grade distributions with the individual sections summed together. This is usually the endpoint you want: <code>groupBy=course</code> answers &quot;how hard is this course&quot;, <code>groupBy=term</code> answers &quot;has it changed&quot;, <code>groupBy=instructor</code> answers &quot;who should I take it with&quot;, and <code>groupBy=instructorOverall</code> answers &quot;how does this professor grade in general&quot;.</p>
         <p>Note that <code>instructorOverall</code> and <code>instructorTerm</code> aggregate across every course, so they take no course filter; passing <code>courseCodes</code>, <code>prefix</code>, or <code>number</code> with them returns 400 rather than silently ignoring the filter.</p>
+        <p><code>instructorTerm</code> and <code>includeCarried=true</code> are computed per request, so they must be narrowed: <code>instructorTerm</code> requires an instructor filter, and <code>includeCarried=true</code> requires a course or an instructor filter. Without one they return 400. The other groupings are precomputed and may be requested unfiltered.</p>
         <h4 id="query-parameters-8">Query parameters</h4>
         <table>
         <thead>
@@ -1347,17 +1348,22 @@
         <tr>
         <td style="text-align:left"><code>/v1/admin/reviews/:id</code></td>
         <td style="text-align:left">PUT</td>
-        <td style="text-align:left">Approve, reject, or escalate</td>
+        <td style="text-align:left">Approve, reject, escalate, or remove</td>
         </tr>
         <tr>
         <td style="text-align:left"><code>/v1/admin/reports</code></td>
         <td style="text-align:left">GET</td>
-        <td style="text-align:left">Open reports (admin key)</td>
+        <td style="text-align:left">Open reports, each with the review it is about (admin key)</td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>/v1/admin/reports/:id</code></td>
+        <td style="text-align:left">POST</td>
+        <td style="text-align:left">Dismiss a report, leaving the review up (admin key)</td>
         </tr>
         <tr>
         <td style="text-align:left"><code>/v1/admin/sweep</code></td>
         <td style="text-align:left">POST</td>
-        <td style="text-align:left">Scheduled maintenance (admin key). Answers <code>200</code> when every step succeeded and <code>207</code> with a <code>failures</code> object when any did not — alert on non-<code>200</code>.</td>
+        <td style="text-align:left">Scheduled maintenance (admin key). Answers <code>200</code> when every step succeeded and <code>207</code> with a <code>failures</code> object when any did not — alert on non-<code>200</code>. Refreshes the grade matviews when anything they read has changed, so allow it a couple of minutes.</td>
         </tr>
         </tbody>
         </table>
@@ -1453,7 +1459,12 @@
         <p>Idempotent — asking for the state a review is already in is a success, not a
         second audit entry. State-guarded — only <code>pending</code> and <code>escalated</code> reviews are
         decidable, and a late retry against a review a human already actioned returns
-        <code>409</code> rather than overturning it.</p>
+        <code>409</code> rather than overturning it. The automated triage may only decide
+        <code>pending</code> reviews: its decision on an <code>escalated</code> one is recorded with
+        <code>applied: false</code> and answered <code>200</code>, because escalated means a person decides.</p>
+        <p><code>remove</code> is the one action on a published review. It takes an <code>approved</code> review
+        down (it becomes <code>rejected</code>), requires a <code>reason</code>, is refused (<code>403</code>) for the
+        triage key, and resolves every open report against the review.</p>
         <p>Every call writes an audit row. While shadow mode is on, an automated decision
         is recorded with <code>applied: false</code> and the review is escalated to a human
         instead.</p>

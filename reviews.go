@@ -378,7 +378,18 @@ func (s *ReviewServer) HandleSubmit(ctx *gin.Context) {
 		"expires_at": time.Now().UTC().Add(48 * time.Hour).Format(time.RFC3339),
 	}
 	if err := s.write.Insert("review_tokens", []any{tokenRowData}, nil); err != nil {
+		// Fatal to the submission, not just logged. This used to carry on and
+		// email the link anyway -- a link whose token was never stored, so it
+		// could only ever answer "that link is not valid", while the row held
+		// the reviewer's dedupe slot for two days. Undo the insert and have
+		// them retry; if the delete fails too, PurgeAbandoned collects the row
+		// after 48 hours, which is no worse than before.
 		log.Printf("verification token insert failed for review %s: %v", review.ID, err)
+		if delErr := s.write.Delete("reviews", eq("id", review.ID)); delErr != nil {
+			log.Printf("removing review %s after its token failed: %v", review.ID, delErr)
+		}
+		ctx.JSON(http.StatusServiceUnavailable, gin.H{"error": "try again shortly"})
+		return
 	}
 
 	// The recipient stored on this row is what makes the reviewer contactable
@@ -527,12 +538,24 @@ func (s *ReviewServer) HandleVerify(ctx *gin.Context) {
 		return
 	}
 
+	// Guarded on `unverified`, and the representation says whether the guard
+	// let this visit through.
+	//
+	// Two visits can both read `unverified` above -- a mail scanner and the
+	// reviewer, or a double click. Unguarded, each minted a key and the second
+	// overwrote the first: both keys were emailed, only one worked, and triage
+	// was dispatched twice. Now exactly one visit flips the row.
 	now := time.Now().UTC().Format(time.RFC3339)
-	if err := s.write.Update("reviews", eq("id", review.ID), map[string]any{
+	guard := eq("id", review.ID)
+	guard.Set("status", "eq.unverified")
+	var flipped []struct {
+		ID string `json:"id"`
+	}
+	if err := s.write.Update("reviews", guard, map[string]any{
 		"status":        "pending",
 		"verified_at":   now,
 		"edit_key_hash": hashToken(manageKey),
-	}, nil); err != nil {
+	}, &flipped); err != nil {
 		sendInternalError(ctx, "v1/reviews/verify", err)
 		return
 	}
@@ -540,6 +563,15 @@ func (s *ReviewServer) HandleVerify(ctx *gin.Context) {
 		"used_at": now,
 	}, nil); err != nil {
 		log.Printf("marking verify token used failed: %v", err)
+	}
+	if len(flipped) == 0 {
+		// The other visit won. Its key is the one that works and the one
+		// already on its way by email, so this one hands out nothing.
+		ctx.JSON(http.StatusOK, gin.H{
+			"status":  "already_verified",
+			"message": "This review is already confirmed and awaiting moderation.",
+		})
+		return
 	}
 
 	// Hand the reviewer their manage key and email a copy. Shown once and

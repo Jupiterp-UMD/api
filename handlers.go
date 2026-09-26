@@ -68,6 +68,21 @@ func isCourselessSummary(table string) bool {
 		table == gradeSummaryByInstructorTermTable
 }
 
+// True for the summary views that are computed per request, and so must be
+// narrowed to one professor or course. The others are materialized.
+func needsNarrowing(table string) bool {
+	return table == gradeSummaryByInstructorAllTable ||
+		table == gradeSummaryByInstructorTermTable
+}
+
+func narrowingError(table string) string {
+	if table == gradeSummaryByInstructorTermTable {
+		return "groupBy=instructorTerm requires instructorSlug, instructorId, or instructor"
+	}
+	return "includeCarried=true requires a course filter (courseCodes, prefix, or number) " +
+		"or an instructor filter (instructorSlug, instructorId, or instructor)"
+}
+
 // True for the views carrying a `term` column.
 func hasTermColumn(table string) bool {
 	return table == gradeSummaryByTermTable ||
@@ -314,9 +329,9 @@ type GradesArgs struct {
 	// one.
 	InstructorId uint64 `form:"instructorId"`
 
-	// A comma-separated list of instructor_source values to include; defaults
-	// to every row. Use reported,lead to exclude attributions carried across
-	// lecture groups.
+	// A comma-separated list of instructor_source values to include. Defaults
+	// to every row, except when filtering by instructor; see setDefaults. Use
+	// reported,lead to exclude attributions carried across lecture groups.
 	InstructorSource string `form:"instructorSource"`
 
 	// Conditions for GPA; for example, gte.3.5
@@ -339,9 +354,24 @@ type GradesArgs struct {
 	SortBy string `form:"sortBy"`
 }
 
+// The attribution tiers every instructor rollup counts. `course` is left out:
+// it carries a name from elsewhere in the course and is sometimes demonstrably
+// wrong -- MATH113 Fall 2019 names one instructor on FC05/FC06 and leaves
+// FC01-FC04 blank, and `course` hands them all to her.
+const defaultInstructorSources = "reported,lead,testudo"
+
 func (g *GradesArgs) setDefaults() {
 	if g.Limit == 0 {
 		g.Limit = 100
+	}
+	// Asking "which sections did this professor teach" should answer with the
+	// same sections the professor's summary counts. Unfiltered, the `course`
+	// tier made a professor's section list larger than their summary, with
+	// the extra rows the least reliable ones. A caller who wants them names
+	// every tier explicitly.
+	if g.InstructorSource == "" &&
+		(g.InstructorId != 0 || g.InstructorSlug != "" || g.Instructor != "") {
+		g.InstructorSource = defaultInstructorSources
 	}
 }
 
@@ -963,6 +993,20 @@ func (client SupabaseClient) handleGetGradeSummary(ctx *gin.Context) {
 		ctx.JSON(http.StatusBadRequest, gin.H{
 			"error": "groupBy=" + args.GroupBy + " aggregates across every term, " +
 				"so term does not apply; use groupBy=term or groupBy=instructorTerm",
+		})
+		return
+	}
+	// Two groupings are plain views rather than materialized ones, and
+	// unnarrowed each is a full aggregate over every grade row -- the shape
+	// that took `grade_terms` past the anon role's 3s statement timeout. They
+	// stay plain because they are only useful narrowed: one professor's trend,
+	// or one course's widened per-professor breakdown. So a narrowing filter is
+	// required rather than hoped for.
+	if needsNarrowing(table) &&
+		args.CourseCodes == "" && args.Prefix == "" && args.Number == "" &&
+		args.InstructorSlug == "" && args.InstructorId == 0 && args.Instructor == "" {
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"error": narrowingError(table),
 		})
 		return
 	}

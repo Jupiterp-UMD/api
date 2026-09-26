@@ -90,7 +90,11 @@ func (m *ModerationServer) HandleQueue(ctx *gin.Context) {
 	// single moderator page load at the default limit, growing linearly with
 	// the queue. Both are now `in.(...)` lookups joined in memory, so the
 	// handler costs three requests regardless of queue depth.
-	names := m.instructorNames(items)
+	instructorIDs := make([]int64, 0, len(items))
+	for _, item := range items {
+		instructorIDs = append(instructorIDs, item.InstructorID)
+	}
+	names := m.instructorNames(instructorIDs)
 	decisions := m.latestDecisions(items)
 
 	out := make([]enriched, 0, len(items))
@@ -105,21 +109,21 @@ func (m *ModerationServer) HandleQueue(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, gin.H{"reviews": out, "count": len(out)})
 }
 
-// instructorNames resolves every instructor named in the queue in one request.
-func (m *ModerationServer) instructorNames(items []queueItem) map[int64]string {
-	names := make(map[int64]string, len(items))
-	if len(items) == 0 {
+// instructorNames resolves a batch of instructor ids to names in one request.
+func (m *ModerationServer) instructorNames(instructorIDs []int64) map[int64]string {
+	names := make(map[int64]string, len(instructorIDs))
+	if len(instructorIDs) == 0 {
 		return names
 	}
 
-	seen := make(map[int64]struct{}, len(items))
-	ids := make([]string, 0, len(items))
-	for _, item := range items {
-		if _, dup := seen[item.InstructorID]; dup {
+	seen := make(map[int64]struct{}, len(instructorIDs))
+	ids := make([]string, 0, len(instructorIDs))
+	for _, id := range instructorIDs {
+		if _, dup := seen[id]; dup {
 			continue
 		}
-		seen[item.InstructorID] = struct{}{}
-		ids = append(ids, strconv.FormatInt(item.InstructorID, 10))
+		seen[id] = struct{}{}
+		ids = append(ids, strconv.FormatInt(id, 10))
 	}
 
 	params := url.Values{}
@@ -185,7 +189,9 @@ const decisionsPerReviewCap = 8
 /* =============================== decide ================================= */
 
 type DecisionRequest struct {
-	Action        string   `json:"action" binding:"required,oneof=approve reject escalate"`
+	// `remove` takes down a review that was already approved. It is the only
+	// action that applies to a published review, and only a person may take it.
+	Action        string   `json:"action" binding:"required,oneof=approve reject escalate remove"`
 	Reason        string   `json:"reason"`
 	Confidence    *float64 `json:"confidence"`
 	Categories    []string `json:"categories"`
@@ -208,8 +214,12 @@ func (m *ModerationServer) HandleDecide(ctx *gin.Context) {
 	var req DecisionRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{
-			"error": "action must be one of approve, reject, escalate",
+			"error": "action must be one of approve, reject, escalate, remove",
 		})
+		return
+	}
+	if !uuidRe.MatchString(reviewID) {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "that is not a review id"})
 		return
 	}
 
@@ -223,6 +233,11 @@ func (m *ModerationServer) HandleDecide(ctx *gin.Context) {
 		return
 	}
 	review := reviews[0]
+
+	if req.Action == "remove" {
+		m.removeReview(ctx, review, req, decidedBy, moderatorName)
+		return
+	}
 
 	targetStatus := map[string]string{
 		"approve":  "approved",
@@ -246,6 +261,32 @@ func (m *ModerationServer) HandleDecide(ctx *gin.Context) {
 			"status": review.Status,
 		})
 		return
+	}
+
+	// The classifier decides only what nobody has looked at yet.
+	//
+	// `escalated` means a person decides -- whether a moderator pressed
+	// escalate, the pre-filter flagged the text, or the timeout gave up on the
+	// classifier. The guard above let the AI act on those too, so with
+	// auto-approve on, a late or retried classifier verdict could publish a
+	// review a human had deliberately held back. Still recorded, because that
+	// disagreement is exactly what shadow mode exists to measure; 200 rather
+	// than 409 so the workflow does not retry it.
+	if decidedBy == "ai" && review.Status != "pending" {
+		m.recordDecision(reviewID, req, decidedBy, moderatorName, false)
+		ctx.JSON(http.StatusOK, gin.H{
+			"status":  review.Status,
+			"applied": false,
+			"note":    "recorded for comparison; a person is deciding this one",
+		})
+		return
+	}
+	// Where this decision may move the review from. The re-check happens in
+	// the write itself, so a human escalating in the gap between the read
+	// above and the write below still wins.
+	decidableFrom := []string{"pending", "escalated"}
+	if decidedBy == "ai" {
+		decidableFrom = []string{"pending"}
 	}
 
 	// Shadow mode. The classifier's opinion is recorded but not applied until
@@ -272,7 +313,7 @@ func (m *ModerationServer) HandleDecide(ctx *gin.Context) {
 		// notices.
 		m.recordDecision(reviewID, req, decidedBy, moderatorName, false)
 
-		escalated, err := m.setStatus(reviewID, "escalated", decidedBy, "")
+		escalated, err := m.setStatus(reviewID, "escalated", decidedBy, "", decidableFrom...)
 		if err != nil {
 			sendInternalError(ctx, "v1/admin/reviews/:id", err)
 			return
@@ -310,7 +351,7 @@ func (m *ModerationServer) HandleDecide(ctx *gin.Context) {
 
 	// Written before the audit row, so the audit row can state what happened
 	// rather than what was intended.
-	changed, err := m.setStatus(reviewID, targetStatus, moderator, req.Reason)
+	changed, err := m.setStatus(reviewID, targetStatus, moderator, req.Reason, decidableFrom...)
 	if err != nil {
 		m.recordDecision(reviewID, req, decidedBy, moderatorName, false)
 		sendInternalError(ctx, "v1/admin/reviews/:id", err)
@@ -399,7 +440,10 @@ func (m *ModerationServer) recordDecision(reviewID string, req DecisionRequest, 
 // decision that was never applied. On the one endpoint built to be idempotent
 // and state-guarded for a machine caller, the audit trail could disagree with
 // `reviews.status` and nothing would say so.
-func (m *ModerationServer) setStatus(reviewID, status, moderator, reason string) (bool, error) {
+//
+// `from` lists the statuses the review may be moved out of; the write matches
+// nothing otherwise.
+func (m *ModerationServer) setStatus(reviewID, status, moderator, reason string, from ...string) (bool, error) {
 	patch := map[string]any{
 		"status":       status,
 		"moderated_at": time.Now().UTC().Format(time.RFC3339),
@@ -410,7 +454,7 @@ func (m *ModerationServer) setStatus(reviewID, status, moderator, reason string)
 	}
 	params := url.Values{}
 	params.Set("id", "eq."+reviewID)
-	params.Set("status", "in.(pending,escalated)")
+	params.Set("status", "in.("+strings.Join(from, ",")+")")
 
 	// The representation is how many rows the guard let through.
 	var updated []struct {
@@ -421,6 +465,91 @@ func (m *ModerationServer) setStatus(reviewID, status, moderator, reason string)
 		return false, err
 	}
 	return len(updated) > 0, nil
+}
+
+// removeReview takes down a review that has already been published.
+//
+// Without it a report was a row nobody could act on: every other action is
+// guarded to `pending` and `escalated`, so an approved review stayed up however
+// clearly it broke the policy, short of hand-written SQL. Reports are a
+// professor's only recourse, which makes this the route that recourse ends at.
+//
+// A person only, and a reason is required: this unpublishes something about a
+// named individual that a moderator previously decided to publish, and the
+// audit trail has to say who reversed that and why. The review becomes
+// `rejected` -- off the public view, out of the rating -- and every open report
+// against it is resolved in the same pass. No email: the reviewer's address was
+// dropped when the review was approved.
+func (m *ModerationServer) removeReview(ctx *gin.Context, review reviewRow, req DecisionRequest, decidedBy, moderatorName string) {
+	if decidedBy != "human" {
+		ctx.JSON(http.StatusForbidden, gin.H{"error": "only a person can remove a published review"})
+		return
+	}
+	reason := strings.TrimSpace(req.Reason)
+	if reason == "" {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "a removal needs a reason; it is kept in the audit trail"})
+		return
+	}
+	// Idempotent, like every other decision: a second click is a success.
+	if review.Status == "rejected" {
+		ctx.JSON(http.StatusOK, gin.H{"status": review.Status, "changed": false})
+		return
+	}
+	if review.Status != "approved" {
+		ctx.JSON(http.StatusConflict, gin.H{
+			"error":  "only a published review can be removed; this one is " + review.Status,
+			"status": review.Status,
+		})
+		return
+	}
+
+	changed, err := m.setStatus(review.ID, "rejected", moderatorName, reason, "approved")
+	if err != nil {
+		m.recordDecision(review.ID, req, decidedBy, moderatorName, false)
+		sendInternalError(ctx, "v1/admin/reviews/:id", err)
+		return
+	}
+	if !changed {
+		m.recordDecision(review.ID, req, decidedBy, moderatorName, false)
+		ctx.JSON(http.StatusConflict, gin.H{"error": "another decision was applied first"})
+		return
+	}
+	m.recordDecision(review.ID, req, decidedBy, moderatorName, true)
+
+	resolved, err := m.resolveReports(eq("review_id", review.ID), "removed", moderatorName)
+	if err != nil {
+		// The review is down, which is the part that matters; the reports stay
+		// open and visibly point at a review that is no longer published.
+		log.Printf("moderation: resolving reports for removed review %s failed: %v", review.ID, err)
+	}
+
+	// Now rather than at the nightly sweep, so the removed review stops
+	// counting toward the professor's rating the moment it stops being shown.
+	var ratingsUpdated *int
+	if err := m.write.RPC("refresh_instructor_ratings", map[string]any{}, &ratingsUpdated); err != nil {
+		log.Printf("moderation: rating refresh after removing %s failed; the nightly sweep will retry: %v", review.ID, err)
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{
+		"status":           "rejected",
+		"applied":          true,
+		"changed":          true,
+		"reports_resolved": resolved,
+	})
+}
+
+// resolveReports closes the open reports matching `filter` and returns how many.
+func (m *ModerationServer) resolveReports(filter url.Values, resolution, moderator string) (int, error) {
+	filter.Set("resolved_at", "is.null")
+	var closed []struct {
+		ID int64 `json:"id"`
+	}
+	err := m.write.Update("review_reports", filter, map[string]any{
+		"resolved_at": time.Now().UTC().Format(time.RFC3339),
+		"resolution":  resolution,
+		"resolved_by": moderator,
+	}, &closed)
+	return len(closed), err
 }
 
 // notifyRejection emails the reviewer, with an appeal route.
@@ -478,20 +607,98 @@ func (m *ModerationServer) notifyRejection(review reviewRow, reason string) {
 
 /* ============================== reports ================================= */
 
-// HandleReports lists open reports against published reviews.
+// reportedReview is the part of a reported review a moderator needs to judge
+// the report. Embedded by PostgREST through the report's foreign key.
+type reportedReview struct {
+	InstructorID int64   `json:"instructor_id"`
+	CourseCode   *string `json:"course_code"`
+	Term         *int    `json:"term"`
+	Rating       float64 `json:"rating"`
+	Title        *string `json:"title"`
+	Body         *string `json:"body"`
+	Status       string  `json:"status"`
+	SubmittedAt  string  `json:"submitted_at"`
+}
+
+// HandleReports lists open reports, oldest first, each with the review it is
+// about.
+//
+// The review content travels with the report. This used to return only the
+// report's own fields, so a moderator saw "reason: defamatory" and a uuid, and
+// had nowhere in the admin surface to look the uuid up.
 func (m *ModerationServer) HandleReports(ctx *gin.Context) {
 	params := url.Values{}
-	params.Set("select", "id,review_id,reason,detail,created_at")
+	params.Set("select", "id,review_id,reason,detail,created_at,"+
+		"reviews(instructor_id,course_code,term,rating,title,body,status,submitted_at)")
 	params.Set("resolved_at", "is.null")
 	params.Set("order", "created_at.asc")
 	params.Set("limit", "100")
 
-	var reports []map[string]any
-	if err := m.write.Select("review_reports", params, &reports); err != nil {
+	var rows []struct {
+		ID        int64           `json:"id"`
+		ReviewID  string          `json:"review_id"`
+		Reason    string          `json:"reason"`
+		Detail    *string         `json:"detail"`
+		CreatedAt string          `json:"created_at"`
+		Review    *reportedReview `json:"reviews"`
+	}
+	if err := m.write.Select("review_reports", params, &rows); err != nil {
 		sendInternalError(ctx, "v1/admin/reports", err)
 		return
 	}
-	ctx.JSON(http.StatusOK, gin.H{"reports": reports, "count": len(reports)})
+
+	ids := make([]int64, 0, len(rows))
+	for _, row := range rows {
+		if row.Review != nil {
+			ids = append(ids, row.Review.InstructorID)
+		}
+	}
+	names := m.instructorNames(ids)
+
+	type enriched struct {
+		ID         int64           `json:"id"`
+		ReviewID   string          `json:"review_id"`
+		Reason     string          `json:"reason"`
+		Detail     *string         `json:"detail"`
+		CreatedAt  string          `json:"created_at"`
+		Instructor string          `json:"instructor"`
+		Review     *reportedReview `json:"review"`
+	}
+	out := make([]enriched, 0, len(rows))
+	for _, row := range rows {
+		item := enriched{
+			ID: row.ID, ReviewID: row.ReviewID, Reason: row.Reason,
+			Detail: row.Detail, CreatedAt: row.CreatedAt, Review: row.Review,
+		}
+		if row.Review != nil {
+			item.Instructor = names[row.Review.InstructorID]
+		}
+		out = append(out, item)
+	}
+	ctx.JSON(http.StatusOK, gin.H{"reports": out, "count": len(out)})
+}
+
+// HandleResolveReport dismisses one report, leaving the review up.
+//
+// The other resolution -- taking the review down -- is `remove` on the review
+// itself, which closes every open report against it at once. Dismissal is per
+// report, because two people reporting the same review may have had different
+// reasons and deserve separate answers.
+func (m *ModerationServer) HandleResolveReport(ctx *gin.Context) {
+	id, err := strconv.ParseInt(ctx.Param("id"), 10, 64)
+	if err != nil || id <= 0 {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "that is not a report id"})
+		return
+	}
+
+	closed, err := m.resolveReports(eq("id", strconv.FormatInt(id, 10)), "dismissed", ctx.GetString("moderator"))
+	if err != nil {
+		sendInternalError(ctx, "v1/admin/reports/:id", err)
+		return
+	}
+	// Zero rows is an already-resolved report or a missing one. Either way
+	// there is nothing open by that id, and a second click should not error.
+	ctx.JSON(http.StatusOK, gin.H{"status": "dismissed", "changed": closed > 0})
 }
 
 /* ============================== maintenance ============================= */
@@ -580,6 +787,19 @@ func (m *ModerationServer) HandleSweep(ctx *gin.Context) {
 		prunedCounters = *limitsPruned
 	}
 
+	// Grade matviews, only when something they read has changed.
+	//
+	// Nothing else refreshes them between term ingests. Every instructor link
+	// and merge from the admin page moves grade rows -- and a merge deletes the
+	// record a matview row still names -- so without this, professor pages
+	// kept a split history, and course popovers a slug that no longer exists,
+	// for months. Triggers mark the matviews stale; this is a no-op otherwise.
+	var gradesRefreshed *bool
+	if err := m.write.SlowRPC("refresh_grade_matviews_if_stale", map[string]any{}, &gradesRefreshed); err != nil {
+		log.Printf("sweep: grade matview refresh failed: %v", err)
+		failures["grade_matviews"] = err.Error()
+	}
+
 	body := gin.H{
 		"ok":               len(failures) == 0,
 		"triage_retried":   retried,
@@ -589,6 +809,7 @@ func (m *ModerationServer) HandleSweep(ctx *gin.Context) {
 		"limits_pruned":    prunedCounters,
 		"emails_sent":      sent,
 		"ratings_updated":  updated,
+		"grades_refreshed": gradesRefreshed != nil && *gradesRefreshed,
 	}
 	if len(failures) > 0 {
 		body["failures"] = failures
