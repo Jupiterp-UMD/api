@@ -533,7 +533,7 @@ For counts aggregated across sections, terms, or instructors, use the `summary` 
 | `number` (optional) | The course number to search for across multiple departments. | `number=433` |
 | `term` (optional) | A string of equalities/inequalities to filter by term code. Possible expressions are: `eq`, `lte`, `lt`, `gt`, `gte`, `neq`, and `in` for a specific set. For multiple conditions, use multiple `term` arguments. | `term=gte.202008` or `term=in.(202408,202501)` |
 | `instructor` (optional) | Return only sections taught by the given instructor, written in "First Last" order. This field is case-sensitive. | `instructor=Larry%20Herman` |
-| `instructorSource` (optional) | A comma-separated list of `instructor_source` values to include. Defaults to all. Use `reported,lead` to exclude attributions carried across lecture groups. | `instructorSource=reported` |
+| `instructorSource` (optional) | A comma-separated list of `instructor_source` values to include. Defaults to all, **except** when filtering by `instructor`, `instructorSlug`, or `instructorId`, where it defaults to `reported,lead,testudo` — the same sections the instructor summaries count. `course` attributions are carried from elsewhere in the course and are sometimes wrong; name every tier, `reported,lead,testudo,course`, to include them. | `instructorSource=reported` |
 | `gpa` (optional) | A string of equalities/inequalities to filter by computed GPA. | `gpa=gte.3.5` |
 | `graded` (optional) | A string of equalities/inequalities to filter by how many students received a letter grade. Useful for excluding sections too small to draw conclusions from. | `graded=gte.30` |
 | `limit` (optional) | Maximum number of records to return; defaults to 100, maximum of 500. | `limit=10` |
@@ -606,6 +606,8 @@ Note the second record: the release lists the instructor once against the lectur
 Gets grade distributions with the individual sections summed together. This is usually the endpoint you want: `groupBy=course` answers "how hard is this course", `groupBy=term` answers "has it changed", `groupBy=instructor` answers "who should I take it with", and `groupBy=instructorOverall` answers "how does this professor grade in general".
 
 Note that `instructorOverall` and `instructorTerm` aggregate across every course, so they take no course filter; passing `courseCodes`, `prefix`, or `number` with them returns 400 rather than silently ignoring the filter.
+
+`instructorTerm` and `includeCarried=true` are computed per request, so they must be narrowed: `instructorTerm` requires an instructor filter, and `includeCarried=true` requires a course or an instructor filter. Without one they return 400. The other groupings are precomputed and may be requested unfiltered.
 
 #### Query parameters
 
@@ -780,9 +782,10 @@ person or by the automated triage.
 | `/v1/reviews/:id` | DELETE | Withdraw (manage key) |
 | `/v1/reviews/:id/report` | POST | Report a published review |
 | `/v1/admin/reviews` | GET | Moderation queue (admin key) |
-| `/v1/admin/reviews/:id` | PUT | Approve, reject, or escalate |
-| `/v1/admin/reports` | GET | Open reports (admin key) |
-| `/v1/admin/sweep` | POST | Scheduled maintenance (admin key). Answers `200` when every step succeeded and `207` with a `failures` object when any did not — alert on non-`200`. |
+| `/v1/admin/reviews/:id` | PUT | Approve, reject, escalate, or remove |
+| `/v1/admin/reports` | GET | Open reports, each with the review it is about (admin key) |
+| `/v1/admin/reports/:id` | POST | Dismiss a report, leaving the review up (admin key) |
+| `/v1/admin/sweep` | POST | Scheduled maintenance (admin key). Answers `200` when every step succeeded and `207` with a `failures` object when any did not — alert on non-`200`. Refreshes the grade matviews when anything they read has changed, so allow it a couple of minutes. |
 
 ## `GET /v1/reviews`
 
@@ -880,7 +883,13 @@ route. Which one acted is recorded on every decision.
 Idempotent — asking for the state a review is already in is a success, not a
 second audit entry. State-guarded — only `pending` and `escalated` reviews are
 decidable, and a late retry against a review a human already actioned returns
-`409` rather than overturning it.
+`409` rather than overturning it. The automated triage may only decide
+`pending` reviews: its decision on an `escalated` one is recorded with
+`applied: false` and answered `200`, because escalated means a person decides.
+
+`remove` is the one action on a published review. It takes an `approved` review
+down (it becomes `rejected`), requires a `reason`, is refused (`403`) for the
+triage key, and resolves every open report against the review.
 
 Every call writes an audit row. While shadow mode is on, an automated decision
 is recorded with `applied: false` and the review is escalated to a human

@@ -26,6 +26,10 @@ type WriteClient struct {
 	url  string
 	key  string
 	http *http.Client
+	// For the maintenance RPCs that legitimately run long -- refreshing every
+	// grade matview is a handful of full aggregates over the grades table. Only
+	// the sweep uses it, and the sweep is not on anyone's request path.
+	slow *http.Client
 }
 
 func NewWriteClient(dbURL, serviceKey string) *WriteClient {
@@ -35,11 +39,16 @@ func NewWriteClient(dbURL, serviceKey string) *WriteClient {
 		// Bounded, because a hung Supabase request otherwise holds a Cloud Run
 		// request slot open until the platform kills it.
 		http: &http.Client{Timeout: 15 * time.Second},
+		slow: &http.Client{Timeout: 2 * time.Minute},
 	}
 }
 
 // do issues a request against PostgREST with the service-role key.
 func (w *WriteClient) do(method, path string, params url.Values, body any, prefer string) (*http.Response, error) {
+	return w.doWith(w.http, method, path, params, body, prefer)
+}
+
+func (w *WriteClient) doWith(client *http.Client, method, path string, params url.Values, body any, prefer string) (*http.Response, error) {
 	full := w.url + "/rest/v1/" + path
 	if len(params) > 0 {
 		full += "?" + params.Encode()
@@ -64,7 +73,7 @@ func (w *WriteClient) do(method, path string, params url.Values, body any, prefe
 	if prefer != "" {
 		req.Header.Set("Prefer", prefer)
 	}
-	return w.http.Do(req)
+	return client.Do(req)
 }
 
 // decode runs a request and unmarshals the response into out.
@@ -73,6 +82,10 @@ func (w *WriteClient) decode(method, path string, params url.Values, body any, p
 	if err != nil {
 		return err
 	}
+	return decodeResponse(method, path, res, out)
+}
+
+func decodeResponse(method, path string, res *http.Response, out any) error {
 	defer res.Body.Close()
 
 	payload, err := io.ReadAll(res.Body)
@@ -127,6 +140,15 @@ func (w *WriteClient) DeleteReturning(table string, params url.Values, out any) 
 // RPC calls a Postgres function.
 func (w *WriteClient) RPC(fn string, args any, out any) error {
 	return w.decode(http.MethodPost, "rpc/"+fn, nil, args, "", out)
+}
+
+// SlowRPC is RPC with the long timeout, for maintenance functions only.
+func (w *WriteClient) SlowRPC(fn string, args any, out any) error {
+	res, err := w.doWith(w.slow, http.MethodPost, "rpc/"+fn, nil, args, "")
+	if err != nil {
+		return err
+	}
+	return decodeResponse(http.MethodPost, "rpc/"+fn, res, out)
 }
 
 // eq builds a PostgREST equality filter, which is most of what the write path

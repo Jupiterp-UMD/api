@@ -49,9 +49,15 @@ var (
 	// Phrases whose only purpose is to address the classifier rather than the
 	// reader. A review that contains one is not necessarily an attack, but it
 	// is never a normal review.
+	//
+	// "you are" is matched only where it addresses the model -- "you are now",
+	// or "you are an AI/assistant/moderator". It used to be `you are (now )?an?`,
+	// which is how students give advice ("if you are a CS major, take it"), and
+	// every such review escalated to a human as a suspected attack.
 	injectionRe = regexp.MustCompile(`(?i)\b(ignore (all )?(previous|prior|above)|disregard (the )?(previous|above)|` +
-		`system prompt|you are (now )?an?|new instructions?|approve this review|` +
-		`output ["']?approve|as an ai\b)`)
+		`system prompt|(you are|you're) now\b|` +
+		`(you are|you're) (an? )?(ai|llm|language model|assistant|chatbot|classifier|moderator)\b|` +
+		`new instructions?|approve this review|output ["']?approve|as an ai\b)`)
 
 	// Allegations about a specific person that a site cannot responsibly
 	// publish on a stranger's say-so. These escalate to a human regardless of
