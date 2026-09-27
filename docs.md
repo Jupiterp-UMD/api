@@ -801,6 +801,12 @@ columns at all.
 
 The total is returned in the `Content-Range` header.
 
+Each review carries a `source`: `jupiterp` for reviews submitted here, or
+`planetterp` for reviews imported once from PlanetTerp. PlanetTerp reviews have
+no `title`, `term` or `edited_at`, are not counted in a professor's
+`jupiterp_rating` (their average is already part of `combined_rating` as the
+PlanetTerp side of the blend), and cannot be reported.
+
 ## `POST /v1/reviews`
 
 ```json
