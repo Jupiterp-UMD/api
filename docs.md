@@ -830,7 +830,7 @@ this professor.** A distinguishable "you have already reviewed this" would turn
 the endpoint into an oracle for "did person X review professor Y", which is the
 privacy property the hashing exists to provide.
 
-Rate limited to 7 per hour per IP, 7 per day per address, and 20 per hour per
+Rate limited to 10 per hour per IP, 10 per day per address, and 20 per hour per
 professor across all submitters. The last one is what catches a coordinated
 run on a single professor, which the per-person limits do nothing about.
 
