@@ -199,9 +199,9 @@ type RateLimit struct {
 var (
 	// Per IP, per hour. Generous enough that a shared campus NAT does not lock
 	// out a lecture hall, tight enough to make scripted submission tedious.
-	limitPerIP = RateLimit{Action: "submit_ip", Window: time.Hour, Max: 5}
+	limitPerIP = RateLimit{Action: "submit_ip", Window: time.Hour, Max: 7}
 	// Per email, per day.
-	limitPerEmail = RateLimit{Action: "submit_email", Window: 24 * time.Hour, Max: 3}
+	limitPerEmail = RateLimit{Action: "submit_email", Window: 24 * time.Hour, Max: 7}
 	// Per instructor, per hour, across all submitters. This is the one that
 	// catches brigading: the per-person limits do nothing against thirty
 	// people arriving at once to bury the same professor.
