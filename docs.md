@@ -789,15 +789,22 @@ person or by the automated triage.
 
 ## `GET /v1/reviews`
 
-Approved reviews only, newest first. Served from a database view that cannot
-express an unapproved row and does not contain the submitter's identity
-columns at all.
+Approved reviews only, newest first unless `sort` says otherwise. Served from a
+database view that cannot express an unapproved row and does not contain the
+submitter's identity columns at all.
 
 | parameter | description | example |
 | :-- | :-- | :-- |
 | `instructorSlug` (required) | Whose reviews to return. | `instructorSlug=shane-walsh` |
 | `courseCode` (optional) | Restrict to one course. | `courseCode=CMSC132` |
+| `sort` (optional) | `newest` (default), `oldest`, `highest` or `lowest`. Rating sorts break ties newest first. | `sort=highest` |
+| `rating` (optional) | One star bucket, `1` to `5`: `4` is 4.0 up to but not including 5.0, so a 4.5 counts as four stars. | `rating=4` |
+| `source` (optional) | `jupiterp` or `planetterp`. | `source=jupiterp` |
 | `limit`, `offset` (optional) | Paging; defaults 25 and 0. | `limit=50` |
+
+Any other value for `sort`, `rating` or `source` is a `400`. Every sort is a
+total order, so paging through one with `offset` returns each review exactly
+once.
 
 The total is returned in the `Content-Range` header.
 
