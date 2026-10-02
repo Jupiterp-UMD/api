@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync"
 	"testing"
@@ -559,5 +560,114 @@ func TestUnnarrowedPerRequestSummariesAreRefused(t *testing.T) {
 		if res := get(r, target); res.Code != http.StatusOK {
 			t.Errorf("%s answered %d, want 200: %s", target, res.Code, res.Body.String())
 		}
+	}
+}
+
+/* ========================= public review listing ======================== */
+
+func reviewsRouter(t *testing.T) (*fakePostgREST, *gin.Engine) {
+	t.Helper()
+	gin.SetMode(gin.TestMode)
+	fake := newFakePostgREST(t)
+	client := SupabaseClient{
+		Url:         fake.server.URL,
+		Key:         "anon",
+		cache:       NewLRUCache(defaultCacheCapacity),
+		courseCache: NewLRUCache(courseCacheCapacity),
+	}
+	r := gin.New()
+	r.GET("/v1/reviews", client.HandleListReviews)
+	return fake, r
+}
+
+// The only upstream query for one listing request, parsed.
+func reviewQuery(t *testing.T, fake *fakePostgREST, r *gin.Engine, target string) url.Values {
+	t.Helper()
+	before := len(fake.requests(http.MethodGet, "public_reviews"))
+	if res := get(r, target); res.Code != http.StatusOK {
+		t.Fatalf("%s answered %d: %s", target, res.Code, res.Body.String())
+	}
+	calls := fake.requests(http.MethodGet, "public_reviews")
+	if len(calls) != before+1 {
+		t.Fatalf("%s made %d upstream calls, want 1", target, len(calls)-before)
+	}
+	query, err := url.ParseQuery(calls[len(calls)-1].Query)
+	if err != nil {
+		t.Fatalf("upstream query does not parse: %v", err)
+	}
+	return query
+}
+
+// Offset paging is only stable over a total order, and ratings tie constantly:
+// every sort has to end on the unique id or a review can land on two pages.
+func TestReviewSortsAreTotalOrders(t *testing.T) {
+	fake, r := reviewsRouter(t)
+
+	cases := map[string]string{
+		"":              "submitted_at.desc,id.desc",
+		"&sort=newest":  "submitted_at.desc,id.desc",
+		"&sort=oldest":  "submitted_at.asc,id.asc",
+		"&sort=highest": "rating.desc,submitted_at.desc,id.desc",
+		"&sort=lowest":  "rating.asc,submitted_at.desc,id.desc",
+	}
+	for suffix, want := range cases {
+		query := reviewQuery(t, fake, r, "/v1/reviews?instructorSlug=shane-walsh"+suffix)
+		if got := query.Get("order"); got != want {
+			t.Errorf("sort %q ordered by %q, want %q", suffix, got, want)
+		}
+	}
+}
+
+// A star bucket is what the stars render: a 4.5 is a four-star review.
+func TestReviewRatingFilterIsAStarBucket(t *testing.T) {
+	fake, r := reviewsRouter(t)
+
+	four := reviewQuery(t, fake, r, "/v1/reviews?instructorSlug=shane-walsh&rating=4")["rating"]
+	if strings.Join(four, " ") != "gte.4 lt.5" {
+		t.Errorf("rating=4 filtered %v, want [gte.4 lt.5]", four)
+	}
+	five := reviewQuery(t, fake, r, "/v1/reviews?instructorSlug=shane-walsh&rating=5")["rating"]
+	if strings.Join(five, " ") != "gte.5" {
+		t.Errorf("rating=5 filtered %v, want [gte.5]", five)
+	}
+	if none := reviewQuery(t, fake, r, "/v1/reviews?instructorSlug=shane-walsh")["rating"]; none != nil {
+		t.Errorf("no rating filtered %v, want nothing", none)
+	}
+}
+
+func TestReviewSourceFilter(t *testing.T) {
+	fake, r := reviewsRouter(t)
+
+	query := reviewQuery(t, fake, r, "/v1/reviews?instructorSlug=shane-walsh&source=planetterp&courseCode=cmsc132")
+	if got := query.Get("source"); got != "eq.planetterp" {
+		t.Errorf("source filtered %q, want eq.planetterp", got)
+	}
+	if got := query.Get("course_code"); got != "eq.CMSC132" {
+		t.Errorf("course filter lost alongside source: %q", got)
+	}
+	if none := reviewQuery(t, fake, r, "/v1/reviews?instructorSlug=shane-walsh")["source"]; none != nil {
+		t.Errorf("no source filtered %v, want nothing", none)
+	}
+}
+
+// Each of these is a closed set; an open one would let a caller mint cache
+// entries without limit. Rejected before anything reaches the database.
+func TestReviewListingRejectsUnknownSortRatingAndSource(t *testing.T) {
+	fake, r := reviewsRouter(t)
+
+	for _, target := range []string{
+		"/v1/reviews?instructorSlug=shane-walsh&sort=rating.desc",
+		"/v1/reviews?instructorSlug=shane-walsh&sort=random",
+		"/v1/reviews?instructorSlug=shane-walsh&rating=0",
+		"/v1/reviews?instructorSlug=shane-walsh&rating=6",
+		"/v1/reviews?instructorSlug=shane-walsh&rating=4.5",
+		"/v1/reviews?instructorSlug=shane-walsh&source=ratemyprofessors",
+	} {
+		if res := get(r, target); res.Code != http.StatusBadRequest {
+			t.Errorf("%s answered %d, want 400", target, res.Code)
+		}
+	}
+	if calls := fake.requests(http.MethodGet, "public_reviews"); len(calls) != 0 {
+		t.Fatalf("a rejected listing reached the database %d times", len(calls))
 	}
 }

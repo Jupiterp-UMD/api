@@ -1368,9 +1368,9 @@
         </tbody>
         </table>
         <h2 id="-get-v1-reviews-"><code>GET /v1/reviews</code></h2>
-        <p>Approved reviews only, newest first. Served from a database view that cannot
-        express an unapproved row and does not contain the submitter's identity
-        columns at all.</p>
+        <p>Approved reviews only, newest first unless <code>sort</code> says otherwise. Served from a
+        database view that cannot express an unapproved row and does not contain the
+        submitter's identity columns at all.</p>
         <table>
         <thead>
         <tr>
@@ -1391,13 +1391,36 @@
         <td style="text-align:left"><code>courseCode=CMSC132</code></td>
         </tr>
         <tr>
+        <td style="text-align:left"><code>sort</code> (optional)</td>
+        <td style="text-align:left"><code>newest</code> (default), <code>oldest</code>, <code>highest</code> or <code>lowest</code>. Rating sorts break ties newest first.</td>
+        <td style="text-align:left"><code>sort=highest</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>rating</code> (optional)</td>
+        <td style="text-align:left">One star bucket, <code>1</code> to <code>5</code>: <code>4</code> is 4.0 up to but not including 5.0, so a 4.5 counts as four stars.</td>
+        <td style="text-align:left"><code>rating=4</code></td>
+        </tr>
+        <tr>
+        <td style="text-align:left"><code>source</code> (optional)</td>
+        <td style="text-align:left"><code>jupiterp</code> or <code>planetterp</code>.</td>
+        <td style="text-align:left"><code>source=jupiterp</code></td>
+        </tr>
+        <tr>
         <td style="text-align:left"><code>limit</code>, <code>offset</code> (optional)</td>
         <td style="text-align:left">Paging; defaults 25 and 0.</td>
         <td style="text-align:left"><code>limit=50</code></td>
         </tr>
         </tbody>
         </table>
+        <p>Any other value for <code>sort</code>, <code>rating</code> or <code>source</code> is a <code>400</code>. Every sort is a
+        total order, so paging through one with <code>offset</code> returns each review exactly
+        once.</p>
         <p>The total is returned in the <code>Content-Range</code> header.</p>
+        <p>Each review carries a <code>source</code>: <code>jupiterp</code> for reviews submitted here, or
+        <code>planetterp</code> for reviews imported once from PlanetTerp. PlanetTerp reviews have
+        no <code>title</code>, <code>term</code> or <code>edited_at</code>, are not counted in a professor's
+        <code>jupiterp_rating</code> (their average is already part of <code>combined_rating</code> as the
+        PlanetTerp side of the blend), and cannot be reported.</p>
         <h2 id="-post-v1-reviews-"><code>POST /v1/reviews</code></h2>
 <pre><code class="language-json">{
   &quot;instructor_slug&quot;: &quot;shane-walsh&quot;,

@@ -828,9 +828,30 @@ func (m *ModerationServer) HandleSweep(ctx *gin.Context) {
 // itself, so a mistake here cannot leak an unapproved review.
 // ReviewListArgs bounds the public review listing, matching the limits every
 // other read endpoint already enforces.
+//
+// Sort, rating and source are closed sets for the same reason the paging is
+// bounded: every distinct query is a cache entry, and an open parameter would
+// hand a caller the key space.
 type ReviewListArgs struct {
 	Limit  uint16 `form:"limit"  binding:"omitempty,min=1,max=500"`
 	Offset uint32 `form:"offset"`
+	Sort   string `form:"sort"   binding:"omitempty,oneof=newest oldest highest lowest"`
+	// A star bucket: 4 is 4.0 up to but not including 5.0, so a 4.5 is a
+	// four-star review, as its stars render. A pointer so that `rating=0` is
+	// refused rather than read as absent.
+	Rating *uint8 `form:"rating" binding:"omitempty,min=1,max=5"`
+	Source string `form:"source" binding:"omitempty,oneof=jupiterp planetterp"`
+}
+
+// The PostgREST order for each `sort`. Every one ends on `id` so that paging
+// with offset is stable: ratings tie constantly -- most reviews are a 5 -- and
+// without a unique last key the same review could appear on two pages and
+// another on none.
+var reviewSortOrders = map[string]string{
+	"newest":  "submitted_at.desc,id.desc",
+	"oldest":  "submitted_at.asc,id.asc",
+	"highest": "rating.desc,submitted_at.desc,id.desc",
+	"lowest":  "rating.asc,submitted_at.desc,id.desc",
 }
 
 func (client SupabaseClient) HandleListReviews(ctx *gin.Context) {
@@ -852,22 +873,37 @@ func (client SupabaseClient) HandleListReviews(ctx *gin.Context) {
 	var page ReviewListArgs
 	if err := ctx.ShouldBindQuery(&page); err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{
-			"error": "limit must be between 1 and 500, and offset a non-negative integer",
+			"error": "limit must be between 1 and 500, offset a non-negative integer, " +
+				"sort one of newest, oldest, highest or lowest, rating 1 to 5, " +
+				"and source jupiterp or planetterp",
 		})
 		return
 	}
 	if page.Limit == 0 {
 		page.Limit = 25
 	}
+	if page.Sort == "" {
+		page.Sort = "newest"
+	}
 
 	params := url.Values{}
 	params.Set("select", "*")
 	params.Set("instructor_slug", "eq."+slug)
-	params.Set("order", "submitted_at.desc")
+	params.Set("order", reviewSortOrders[page.Sort])
 	params.Set("limit", strconv.FormatUint(uint64(page.Limit), 10))
 	params.Set("offset", strconv.FormatUint(uint64(page.Offset), 10))
 	if course := ctx.Query("courseCode"); course != "" {
 		params.Set("course_code", "eq."+strings.ToUpper(course))
+	}
+	if page.Rating != nil {
+		stars := int(*page.Rating)
+		params.Add("rating", "gte."+strconv.Itoa(stars))
+		if stars < 5 {
+			params.Add("rating", "lt."+strconv.Itoa(stars+1))
+		}
+	}
+	if page.Source != "" {
+		params.Set("source", "eq."+page.Source)
 	}
 
 	key := buildCacheKey(ctx.Request)
