@@ -268,7 +268,53 @@ func checkRateLimit(w *WriteClient, bucket string, limit RateLimit) (bool, error
 // address to trust moves one position left.
 const trustedProxyHops = 0
 
+// Context key under which TrustEdgeProxy records a visitor address it has
+// verified came from Cloudflare.
+const edgeClientIPKey = "edge_client_ip"
+
+// The header Cloudflare's Transform Rule sets on every request it forwards,
+// carrying EDGE_PROXY_SECRET. See the API README.
+const edgeSecretHeader = "X-Jupiterp-Edge-Secret"
+
+// TrustEdgeProxy takes the visitor address from Cloudflare, but only for
+// requests that prove they came through Cloudflare.
+//
+// Behind Cloudflare, the rightmost X-Forwarded-For entry -- the address Cloud
+// Run observed -- is a Cloudflare edge server, not the visitor. Every limiter
+// keyed on clientIP would then share a handful of buckets across everyone
+// routed through the same edge, and ten submissions an hour from one campus
+// would lock the rest of it out.
+//
+// Cloudflare does report the visitor, in `CF-Connecting-IP`, but that header is
+// only trustworthy when Cloudflare set it: the Cloud Run URL stays reachable
+// directly, and anyone calling it can send any `CF-Connecting-IP` they like. So
+// Cloudflare also attaches a shared secret, and only a request carrying it has
+// its `CF-Connecting-IP` believed. Cloudflare overwrites both headers on every
+// request it proxies, so a visitor cannot supply either through it.
+//
+// With no secret configured this does nothing and clientIP behaves as it
+// always has, which is correct for a deployment with nothing in front of it.
+func TrustEdgeProxy(secret string) gin.HandlerFunc {
+	return func(ctx *gin.Context) {
+		if secret != "" {
+			presented := ctx.GetHeader(edgeSecretHeader)
+			if subtle.ConstantTimeCompare([]byte(presented), []byte(secret)) == 1 {
+				if ip := strings.TrimSpace(ctx.GetHeader("CF-Connecting-IP")); net.ParseIP(ip) != nil {
+					ctx.Set(edgeClientIPKey, ip)
+				}
+			}
+			// Not passed further in. Nothing downstream needs it, and a header
+			// that is never read cannot be logged by accident.
+			ctx.Request.Header.Del(edgeSecretHeader)
+		}
+		ctx.Next()
+	}
+}
+
 func clientIP(ctx *gin.Context) string {
+	if ip := ctx.GetString(edgeClientIPKey); ip != "" {
+		return ip
+	}
 	if forwarded := ctx.GetHeader("X-Forwarded-For"); forwarded != "" {
 		parts := strings.Split(forwarded, ",")
 		idx := len(parts) - 1 - trustedProxyHops

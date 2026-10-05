@@ -100,8 +100,8 @@ func testConfig() *Config {
 		TriageMaxAttempts:   3,
 		AutoApprove:         true,
 		AutoApproveMinConf:  0.9,
-		// Dispatch runs in a goroutine after verification; with triage
-		// disabled it only escalates, which the fake absorbs.
+		// Dispatch runs inline during verification; with triage disabled it
+		// only escalates, which the fake absorbs.
 		TriageDisabled: true,
 	}
 }
