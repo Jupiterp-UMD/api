@@ -20,6 +20,11 @@ type Config struct {
 	DatabaseKey string
 	Port        string
 
+	// Shared secret Cloudflare attaches to every request it proxies. Required
+	// for clientIP to see visitors rather than Cloudflare's edge once the API is
+	// behind it; see TrustEdgeProxy. Empty means nothing is in front.
+	EdgeProxySecret string
+
 	// Write path. Empty ServiceKey disables /v1 entirely.
 	ServiceKey  string
 	EmailPepper string
@@ -83,6 +88,8 @@ func LoadConfig() *Config {
 		DatabaseURL: mustEnv("DATABASE_URL"),
 		DatabaseKey: mustEnv("DATABASE_KEY"),
 		Port:        envOr("PORT", "8080"),
+
+		EdgeProxySecret: os.Getenv("EDGE_PROXY_SECRET"),
 
 		ServiceKey:    os.Getenv("DATABASE_SERVICE_KEY"),
 		EmailPepper:   os.Getenv("REVIEW_EMAIL_PEPPER"),
@@ -176,6 +183,10 @@ func (c *Config) Validate() {
 		fatal = append(fatal, "REVIEW_TRIAGE_WEBHOOK_SECRET is required when "+
 			"REVIEW_TRIAGE_WEBHOOK_URL is set; the webhook endpoint is on the public "+
 			"internet and the signature is what stops it being fed fabricated reviews")
+	}
+	if c.EdgeProxySecret != "" && len(c.EdgeProxySecret) < 32 {
+		fatal = append(fatal, "EDGE_PROXY_SECRET is shorter than 32 characters; anyone who "+
+			"guesses it can choose their own rate-limit bucket")
 	}
 	if c.TriageCallbackKey != "" && len(c.TriageCallbackKey) < 32 {
 		fatal = append(fatal, "REVIEW_TRIAGE_CALLBACK_KEY is shorter than 32 characters")

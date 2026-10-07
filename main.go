@@ -41,6 +41,8 @@ func main() {
 	// Initialize Gin instance and middleware
 	r := gin.New()
 	r.Use(gin.Recovery())
+	// Before the logger, so the address it hashes is the visitor's.
+	r.Use(TrustEdgeProxy(cfg.EdgeProxySecret))
 	r.Use(requestLogger(cfg.EmailPepper))
 
 	// Create SupabaseClient to connect with DB

@@ -403,20 +403,20 @@ func (s *ReviewServer) HandleSubmit(ctx *gin.Context) {
 		log.Printf("queueing verification email failed for review %s: %v", review.ID, err)
 	}
 
-	// Delivery does not block the response.
+	// Delivered before responding, not in a goroutine after it.
 	//
-	// Requires the service to be deployed with CPU always allocated
-	// (`--no-cpu-throttling`). Cloud Run throttles a container's CPU to near
-	// zero between requests by default, so work started after the response is
-	// written can be suspended indefinitely and lost when the instance is
-	// reclaimed. The hourly sweep drains the outbox either way, so the cost
-	// here is a late verification link rather than a missing one -- but see
-	// HandleVerify, where the same pattern has a much longer backstop.
-	go func() {
-		if _, err := s.email.Flush(5); err != nil {
-			log.Printf("email flush after submit failed: %v", err)
-		}
-	}()
+	// This used to run after the response was written, which only works with
+	// CPU always allocated (`--no-cpu-throttling`): Cloud Run otherwise throttles
+	// a container to near zero between requests, so the goroutine could be
+	// suspended and lost. That flag switches the service to instance-based
+	// billing -- paying for every idle minute an instance stays warm -- to save
+	// the reviewer a few hundred milliseconds on a request they make once.
+	// Inline, the service runs on request-based billing. A delivery failure is
+	// still not the reviewer's problem: the message stays queued and the hourly
+	// sweep retries it.
+	if _, err := s.email.Flush(5); err != nil {
+		log.Printf("email flush after submit failed: %v", err)
+	}
 
 	ctx.JSON(http.StatusAccepted, gin.H{"status": "verification_sent"})
 }
@@ -580,16 +580,17 @@ func (s *ReviewServer) HandleVerify(ctx *gin.Context) {
 	// and a support burden.
 	s.emailManageKey(review.ID, review.InstructorID, manageKey)
 
-	// Fire-and-forget: the reviewer's request completes as soon as the status
-	// flips. They are never made to wait on n8n or on a model.
+	// Inline, before responding. The reviewer still never waits on a model: the
+	// n8n webhook acknowledges on receipt and calls back with its decision
+	// later, so this costs one round trip, capped by the triage client's
+	// timeout.
 	//
-	// Also requires `--no-cpu-throttling`. This one has no cheap backstop: if
-	// the goroutine never runs, the review stays `pending` with no park on it,
-	// and only the REVIEW_TRIAGE_TIMEOUT_SEC sweep will move it -- a day and a
-	// half later by default, while its author has been told it is awaiting
-	// moderation. The deploy flag is what makes that path rare rather than
-	// routine.
-	go s.triage.Dispatch(review.ID)
+	// It ran in a goroutine after the response until the service moved to
+	// request-based billing, where CPU is throttled between requests. A
+	// suspended dispatch has no cheap backstop -- the review sits `pending`
+	// with no park on it until REVIEW_TRIAGE_TIMEOUT_SEC escalates it, a day and
+	// a half later by default -- so it runs while the request still holds CPU.
+	s.triage.Dispatch(review.ID)
 
 	ctx.JSON(http.StatusOK, gin.H{
 		"status":     "verified",
@@ -623,7 +624,10 @@ func (s *ReviewServer) emailManageKey(reviewID string, instructorID int64, manag
 		log.Printf("queueing manage key email failed for review %s: %v", reviewID, err)
 		return
 	}
-	go func() { _, _ = s.email.Flush(5) }()
+	// Inline for the same reason as the flush in HandleSubmit.
+	if _, err := s.email.Flush(5); err != nil {
+		log.Printf("email flush after verify failed: %v", err)
+	}
 }
 
 /* ============================== manage ================================== */

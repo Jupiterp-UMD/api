@@ -193,8 +193,9 @@ const PolicyVersion = "2026-08-14"
 // Dispatch runs the pre-filter and, if the review survives it, hands the
 // content to the triage workflow.
 //
-// Called in a goroutine. Nothing here is allowed to affect the reviewer's
-// request, which has already completed.
+// Called inline from HandleVerify, before the response is written. Nothing
+// here is allowed to affect the reviewer's request: every failure is logged,
+// parked or escalated, never returned.
 func (t *TriageClient) Dispatch(reviewID string) {
 	var reviews []struct {
 		reviewRow

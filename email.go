@@ -82,8 +82,8 @@ func (e *EmailSender) Queue(reviewID, recipient, template string, payload map[st
 	return e.write.Insert("email_outbox", []any{row}, nil)
 }
 
-// Flush delivers due messages. Called after a submit (best effort, in a
-// goroutine) and by the scheduled sweep.
+// Flush delivers due messages. Called after a submit and a verification (best
+// effort, before responding) and by the scheduled sweep.
 //
 // Returns how many were sent. A daily-cap response is not an error here: it
 // leaves the message queued with a later `next_attempt_at`, which is the whole

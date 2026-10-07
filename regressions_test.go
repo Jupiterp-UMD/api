@@ -670,6 +670,91 @@ func TestClientIPIsStableAcrossSpoofedHeaders(t *testing.T) {
 	}
 }
 
+/* ====================== Cloudflare in front ============================= */
+
+// Behind Cloudflare the rightmost X-Forwarded-For entry is a Cloudflare edge
+// server, so every visitor through one edge shares a rate-limit bucket.
+// `CF-Connecting-IP` names the visitor, but the Cloud Run URL is reachable
+// directly, so it is believed only alongside the secret Cloudflare attaches.
+func TestClientIPTrustsCloudflareOnlyWithSecret(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	const secret = "0123456789abcdef0123456789abcdef"
+	const edge = "172.68.1.1" // a Cloudflare edge, as Cloud Run observes it
+
+	cases := []struct {
+		name       string
+		configured string
+		presented  string
+		connecting string
+		want       string
+	}{
+		{
+			name:       "through Cloudflare, the visitor is used",
+			configured: secret,
+			presented:  secret,
+			connecting: "203.0.113.7",
+			want:       "203.0.113.7",
+		},
+		{
+			name:       "direct to Cloud Run with a forged CF-Connecting-IP",
+			configured: secret,
+			presented:  "",
+			connecting: "1.2.3.4",
+			want:       edge,
+		},
+		{
+			name:       "wrong secret is the same as none",
+			configured: secret,
+			presented:  "guess",
+			connecting: "1.2.3.4",
+			want:       edge,
+		},
+		{
+			name:       "not configured, nothing changes",
+			configured: "",
+			presented:  "",
+			connecting: "1.2.3.4",
+			want:       edge,
+		},
+		{
+			name:       "a malformed address is not trusted even with the secret",
+			configured: secret,
+			presented:  secret,
+			connecting: "not-an-ip",
+			want:       edge,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var got string
+			var leaked string
+			r := gin.New()
+			r.Use(TrustEdgeProxy(tc.configured))
+			r.GET("/", func(ctx *gin.Context) {
+				got = clientIP(ctx)
+				leaked = ctx.GetHeader(edgeSecretHeader)
+			})
+
+			req := httptest.NewRequest(http.MethodGet, "/", nil)
+			req.RemoteAddr = "10.0.0.1:5000"
+			req.Header.Set("X-Forwarded-For", "198.51.100.1, "+edge)
+			req.Header.Set("CF-Connecting-IP", tc.connecting)
+			if tc.presented != "" {
+				req.Header.Set(edgeSecretHeader, tc.presented)
+			}
+			r.ServeHTTP(httptest.NewRecorder(), req)
+
+			if got != tc.want {
+				t.Fatalf("clientIP() = %q, want %q", got, tc.want)
+			}
+			if tc.configured != "" && leaked != "" {
+				t.Fatalf("edge secret header reached the handler")
+			}
+		})
+	}
+}
+
 /* ================== manage key survives the outbox ====================== */
 
 // The manage key was minted at submit, stashed in the verification email's
