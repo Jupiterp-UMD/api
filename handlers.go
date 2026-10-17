@@ -242,7 +242,7 @@ type InstructorArgs struct {
 
 	// Comma-separated columns to return, instead of the whole row.
 	//
-	// An instructor row is wide -- seventeen columns, most of them PlanetTerp
+	// An instructor row is wide -- eighteen columns, most of them PlanetTerp
 	// provenance -- and a caller that wants a rating gets all of it. The course
 	// planner needs exactly `slug` and `average_rating` for all 2,976 active
 	// instructors, which was 1.3MB of which about 6% was read.
