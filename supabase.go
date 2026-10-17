@@ -227,12 +227,12 @@ func (s SupabaseClient) getCoursesWithSections(args CoursesWithSectionsArgs) (*h
 // Get a list of instructors (including inactive ones) and their ratings.
 // The columns an instructor request is allowed to name.
 //
-// Both `instructors` and `active_instructors` carry the same seventeen, so one
+// Both `instructors` and `active_instructors` carry the same eighteen, so one
 // set covers every table this endpoint reads.
 var instructorColumns = map[string]struct{}{
 	"slug": {}, "name": {}, "average_rating": {}, "id": {}, "name_norm": {},
 	"pt_slug": {}, "pt_average_rating": {}, "pt_review_count": {}, "pt_snapshot_at": {},
-	"jupiterp_rating": {}, "jupiterp_review_count": {}, "combined_rating": {},
+	"jupiterp_rating": {}, "jupiterp_review_count": {}, "display_rating": {}, "combined_rating": {},
 	"first_seen_term": {}, "last_seen_term": {}, "is_active": {},
 	"created_at": {}, "updated_at": {},
 }

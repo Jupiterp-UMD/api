@@ -410,7 +410,9 @@ Get a list of all instructors and their average ratings, including instructors n
 | :-- | :--: | :-- |
 | `slug` | string | The internal string used to identify an individual instructor, unique to that instructor. See PlanetTerp API spec for more info. |
 | `name` | string | The instructor's name as listed on PlanetTerp |
-| `average_rating` | float | The average rating given to that professor from reviews on PlanetTerp |
+| `average_rating` | float | Legacy alias of `combined_rating`, kept for v0 clients. |
+| `display_rating` | float | The rating to show a reader: the recency-weighted average of Jupiterp reviews and the PlanetTerp baseline. Null only when the professor has no reviews. |
+| `combined_rating` | float | The rating to rank by: `display_rating` pulled toward the site-wide average by a fixed number of notional reviews, so a professor with one 5-star review does not outrank one with sixty 4.8s. Not an average of the professor's reviews. |
 
 #### Examples
 

@@ -391,7 +391,7 @@ func TestVerifyEmailLinksToTheConfiguredSite(t *testing.T) {
 // A caller-supplied column list lands in PostgREST's `select`, so it is
 // validated against a fixed set rather than forwarded.
 //
-// The endpoint exists because an instructor row is seventeen columns and the
+// The endpoint exists because an instructor row is eighteen columns and the
 // course planner reads two of them, over every active instructor -- 1.3MB to
 // use about 6% of it. That is worth having, but not at the cost of letting a
 // query string name columns or embed tables the endpoint does not publish.
