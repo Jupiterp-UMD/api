@@ -826,7 +826,8 @@ PlanetTerp side of the blend), and cannot be reported.
   "title": "Genuinely excellent lecturer",
   "body": "…",
   "email": "student@terpmail.umd.edu",
-  "captcha_token": "0.abc…"
+  "captcha_token": "0.abc…",
+  "session_token": "…"
 }
 ```
 
@@ -836,12 +837,42 @@ stored only as a peppered hash, is never displayed, and is never shown to the
 professor. `course_code` and `term` are optional, and `term` must be a Fall or
 Spring term, because the grade dataset covers only those.
 
-Responds `202 Accepted` with `{"status":"verification_sent"}`.
+Responds `202 Accepted` with
+`{"status":"verification_sent","session_token":"…"}`.
 
 **The response is identical whether or not that address has already reviewed
 this professor.** A distinguishable "you have already reviewed this" would turn
 the endpoint into an oracle for "did person X review professor Y", which is the
 privacy property the hashing exists to provide.
+
+### Reviewer sessions
+
+The `session_token` in a `202` lets this browser skip the confirmation email
+for a while. A session needs two secrets that are kept in different places:
+this token, and the review's emailed verification token. After the emailed link
+is confirmed, the verify page sends both to
+[`POST /v1/reviews/sessions`](#-post-v1-reviews-sessions-) to start the session.
+The token on its own does nothing. So does the link on its own, and so does
+opening the link in a different browser.
+
+For **5 hours** after that, a submission that sends the token as
+`session_token` **with the same `email`** skips the confirmation email. It
+responds `201 Created` and goes straight to moderation:
+
+```json
+{ "status": "submitted", "manage_key": "…", "message": "…" }
+```
+
+Each session allows at most 20 reviews, and each address at most 20 session
+reviews a day. These replace the per-address limit below; the per-IP and
+per-professor limits, the captcha and moderation all still apply. A submission
+that fails gives its use back. A session is not extended by use. It ends, and
+no new one can start, once any review from that address has been rejected.
+
+A token that is expired, used up, revoked or for a different address is
+ignored: the submission goes through the email flow and gets a new `202` with
+a new token. Because the address has already been proven, a session
+submission that duplicates an existing review answers `409`.
 
 Rate limited to 10 per hour per IP, 10 per day per address, and 20 per hour per
 professor across all submitters. The last one is what catches a coordinated
@@ -861,6 +892,28 @@ because mail clients prefetch links and people double-click.
 
 The manage key is also emailed. It cannot be recovered — there is deliberately
 no way to link it back to a person.
+
+
+## `POST /v1/reviews/sessions`
+
+Starts a [reviewer session](#reviewer-sessions). Called by the verify page
+after the link has been confirmed:
+
+```json
+{ "verify_token": "…", "session_tokens": ["…", "…"] }
+```
+
+`session_tokens` is every token this browser holds, at most 20. Responds
+`200` with `{"activated": false}` when the link has not been confirmed, has
+expired, or none of the tokens belongs to its review, so a failure confirms
+nothing about either secret. On success it returns which token is now live, by
+its SHA-256 hash, and when it expires:
+
+```json
+{ "activated": true, "token_hash": "…", "expires_at": "2026-11-02T20:00:00+00:00" }
+```
+
+A session starts only once. Opening the link again cannot restart it.
 
 ## `DELETE /v1/reviews/:id`
 

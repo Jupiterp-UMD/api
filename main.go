@@ -217,6 +217,7 @@ func main() {
 		for _, path := range []string{
 			"/reviews",
 			"/reviews/verify/:token",
+			"/reviews/sessions",
 			"/reviews/manage",
 			"/reviews/:id",
 			"/reviews/:id/report",
@@ -231,6 +232,7 @@ func main() {
 		// Reviewer-facing writes.
 		v1.POST("/reviews", reviewServer.HandleSubmit)
 		v1.GET("/reviews/verify/:token", reviewServer.HandleVerify)
+		v1.POST("/reviews/sessions", reviewServer.HandleActivateSession)
 		v1.GET("/reviews/manage", reviewServer.HandleManage)
 		v1.DELETE("/reviews/:id", reviewServer.HandleWithdraw)
 		v1.POST("/reviews/:id/report", reviewServer.HandleReport)

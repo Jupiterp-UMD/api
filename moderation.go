@@ -738,6 +738,12 @@ func (m *ModerationServer) HandleSweep(ctx *gin.Context) {
 		failures["purge_abandoned"] = err.Error()
 	}
 
+	sessionsPurged, err := PurgeReviewerSessions(m.write)
+	if err != nil {
+		log.Printf("sweep: purging reviewer sessions failed: %v", err)
+		failures["purge_sessions"] = err.Error()
+	}
+
 	sent, err := m.email.Flush(50)
 	if err != nil {
 		log.Printf("sweep: email flush failed: %v", err)
@@ -805,6 +811,7 @@ func (m *ModerationServer) HandleSweep(ctx *gin.Context) {
 		"triage_retried":   retried,
 		"triage_escalated": escalated,
 		"purged":           purged,
+		"sessions_purged":  sessionsPurged,
 		"contacts_purged":  contactsPurged,
 		"limits_pruned":    prunedCounters,
 		"emails_sent":      sent,

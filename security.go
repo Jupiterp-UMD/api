@@ -202,6 +202,13 @@ var (
 	limitPerIP = RateLimit{Action: "submit_ip", Window: time.Hour, Max: 10}
 	// Per email, per day.
 	limitPerEmail = RateLimit{Action: "submit_email", Window: 24 * time.Hour, Max: 10}
+	// Per email, per day, for submits made through a reviewer session, in
+	// place of the one above. Matches the per-session cap, so one session can
+	// be used in full; several sessions in a day still share this.
+	limitPerSessionEmail = RateLimit{Action: "submit_session", Window: 24 * time.Hour, Max: reviewerSessionMaxUses}
+	// Session activations per IP. Each needs two 256-bit secrets, so this is
+	// not what stops guessing; it bounds the database work an abuser can cause.
+	limitPerActivation = RateLimit{Action: "session_activate", Window: time.Hour, Max: 30}
 	// Per instructor, per hour, across all submitters. This is the one that
 	// catches brigading: the per-person limits do nothing against thirty
 	// people arriving at once to bury the same professor.
