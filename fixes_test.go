@@ -221,6 +221,240 @@ func TestVerifyThatWinsReturnsTheKey(t *testing.T) {
 	}
 }
 
+/* =========================== reviewer sessions ========================== */
+
+const sessionSubmitBody = `{"instructor_slug":"shane-walsh","rating":4,"email":"student@umd.edu","session_token":"SESSION"}`
+
+func sessionFake(fake *fakePostgREST, active bool) {
+	fake.on(http.MethodGet, "instructors", `[{"id":7,"slug":"shane-walsh","name":"Shane Walsh"}]`)
+	fake.on(http.MethodPost, "reviews", `[{"id":"`+testReviewID+`","instructor_id":7,"status":"pending"}]`)
+	if active {
+		fake.on(http.MethodPost, "rpc/consume_reviewer_session", `true`)
+	} else {
+		fake.on(http.MethodPost, "rpc/consume_reviewer_session", `false`)
+	}
+}
+
+// An active session skips the email entirely: no verification token, no
+// verify mail, and the review lands where a click would have put it.
+func TestSessionSubmitSkipsTheConfirmationEmail(t *testing.T) {
+	fake, reviews, _ := servers(t)
+	sessionFake(fake, true)
+
+	res := serve(reviews.HandleSubmit, http.MethodPost, "/v1/reviews", "/v1/reviews", sessionSubmitBody, "")
+
+	if res.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201: %s", res.Code, res.Body.String())
+	}
+	body := decodeBody(t, res)
+	if body["status"] != "submitted" || body["manage_key"] == nil || body["manage_key"] == "" {
+		t.Fatalf("session submit did not return a manage key: %v", body)
+	}
+	if _, minted := body["session_token"]; minted {
+		t.Fatal("a session submit minted another session, so one verification could be chained forever")
+	}
+
+	consumed := fake.requests(http.MethodPost, "rpc/consume_reviewer_session")
+	if len(consumed) != 1 || !strings.Contains(consumed[0].Body, hashEmail("student@umd.edu", "test-pepper")) ||
+		strings.Contains(consumed[0].Body, "SESSION") {
+		t.Fatalf("the session was not checked against the address hash, or the raw token was sent: %+v", consumed)
+	}
+	inserts := fake.requests(http.MethodPost, "reviews")
+	if len(inserts) != 1 || !strings.Contains(inserts[0].Body, `"status":"pending"`) {
+		t.Fatalf("session review was not inserted as pending: %+v", inserts)
+	}
+	if tokens := fake.requests(http.MethodPost, "review_tokens"); len(tokens) != 0 {
+		t.Fatalf("a verification token was minted for a session submit: %+v", tokens)
+	}
+	if sessions := fake.requests(http.MethodPost, "reviewer_sessions"); len(sessions) != 0 {
+		t.Fatalf("a session submit stored a new session: %+v", sessions)
+	}
+	for _, queued := range fake.requests(http.MethodPost, "email_outbox") {
+		if strings.Contains(queued.Body, `"verify"`) {
+			t.Fatalf("a verification email was queued for a session submit: %s", queued.Body)
+		}
+	}
+}
+
+// A token the database will not honour falls back to the email flow, with the
+// same response a submit without one gets.
+func TestInactiveSessionFallsBackToTheEmailFlow(t *testing.T) {
+	fake, reviews, _ := servers(t)
+	sessionFake(fake, false)
+	fake.on(http.MethodPost, "reviews", `[{"id":"`+testReviewID+`","instructor_id":7,"status":"unverified"}]`)
+
+	res := serve(reviews.HandleSubmit, http.MethodPost, "/v1/reviews", "/v1/reviews", sessionSubmitBody, "")
+
+	if res.Code != http.StatusAccepted {
+		t.Fatalf("status = %d, want 202: %s", res.Code, res.Body.String())
+	}
+	body := decodeBody(t, res)
+	if body["status"] != "verification_sent" || body["session_token"] == nil || body["session_token"] == "" {
+		t.Fatalf("fallback did not answer like the email flow: %v", body)
+	}
+	inserts := fake.requests(http.MethodPost, "reviews")
+	if len(inserts) != 1 || !strings.Contains(inserts[0].Body, `"status":"unverified"`) {
+		t.Fatalf("fallback review was not inserted as unverified: %+v", inserts)
+	}
+	sessions := fake.requests(http.MethodPost, "reviewer_sessions")
+	if len(sessions) != 1 || !strings.Contains(sessions[0].Body, testReviewID) ||
+		strings.Contains(sessions[0].Body, body["session_token"].(string)) {
+		t.Fatalf("the new session was not stored hashed against its review: %+v", sessions)
+	}
+}
+
+// The duplicate branch must carry a session token like every other email-flow
+// answer, or its absence says "this address already reviewed this professor".
+func TestDuplicateSubmitStillReturnsASessionToken(t *testing.T) {
+	fake, reviews, _ := servers(t)
+	fake.on(http.MethodGet, "instructors", `[{"id":7,"slug":"shane-walsh","name":"Shane Walsh"}]`)
+	fake.onFunc(http.MethodPost, "reviews", func(recordedRequest) (int, string) {
+		return http.StatusConflict, `{"code":"23505","message":"duplicate key value violates unique constraint \"reviews_one_per_person\""}`
+	})
+
+	res := serve(reviews.HandleSubmit, http.MethodPost, "/v1/reviews", "/v1/reviews",
+		`{"instructor_slug":"shane-walsh","rating":4,"email":"student@umd.edu"}`, "")
+
+	body := decodeBody(t, res)
+	if res.Code != http.StatusAccepted || body["status"] != "verification_sent" || body["session_token"] == nil {
+		t.Fatalf("duplicate answered differently from a fresh submit: %d %v", res.Code, body)
+	}
+	if sessions := fake.requests(http.MethodPost, "reviewer_sessions"); len(sessions) != 0 {
+		t.Fatalf("a session was stored for a review that does not exist: %+v", sessions)
+	}
+}
+
+// Activation used to happen on the link alone, which let someone who submitted
+// with another person's address start a session from that person's mail
+// scanner opening the link. Verifying must not start one any more.
+func TestVerifyAloneStartsNoSession(t *testing.T) {
+	fake, reviews, _ := servers(t)
+	verifyFake(fake)
+	fake.on(http.MethodPatch, "reviews", `[{"id":"`+testReviewID+`"}]`)
+
+	serve(reviews.HandleVerify, http.MethodGet, "/v1/reviews/verify/:token", "/v1/reviews/verify/tok", "", "")
+
+	if patches := fake.requests(http.MethodPatch, "reviewer_sessions"); len(patches) != 0 {
+		t.Fatalf("verifying the link touched a session: %+v", patches)
+	}
+	if calls := fake.requests(http.MethodPost, "rpc/activate_reviewer_session"); len(calls) != 0 {
+		t.Fatalf("verifying the link activated a session: %+v", calls)
+	}
+}
+
+func TestActivationNeedsAConfirmedUnexpiredLinkAndTheSessionToken(t *testing.T) {
+	const activateBody = `{"verify_token":"VERIFY","session_tokens":["SESSION-A","SESSION-B"]}`
+	cases := []struct {
+		name      string
+		token     string
+		wantRPC   bool
+		activated bool
+	}{
+		{"unknown link", ``, false, false},
+		{"link never confirmed", `{"token_hash":"h","review_id":"` + testReviewID + `","expires_at":"2999-01-01T00:00:00Z"}`, false, false},
+		{"confirmed link past expiry", `{"token_hash":"h","review_id":"` + testReviewID + `","expires_at":"2000-01-01T00:00:00Z","used_at":"2000-01-01T00:00:00Z"}`, false, false},
+		{"confirmed link", `{"token_hash":"h","review_id":"` + testReviewID + `","expires_at":"2999-01-01T00:00:00Z","used_at":"2026-01-01T00:00:00Z"}`, true, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			fake, reviews, _ := servers(t)
+			if tc.token == "" {
+				fake.on(http.MethodGet, "review_tokens", `[]`)
+			} else {
+				fake.on(http.MethodGet, "review_tokens", `[`+tc.token+`]`)
+			}
+			fake.on(http.MethodPost, "rpc/activate_reviewer_session",
+				`[{"token_hash":"`+hashToken("SESSION-B")+`","expires_at":"2026-11-02T20:00:00+00:00"}]`)
+
+			res := serve(reviews.HandleActivateSession, http.MethodPost, "/v1/reviews/sessions", "/v1/reviews/sessions", activateBody, "")
+
+			body := decodeBody(t, res)
+			if res.Code != http.StatusOK || body["activated"] != tc.activated {
+				t.Fatalf("got %d %v, want activated=%v", res.Code, body, tc.activated)
+			}
+			calls := fake.requests(http.MethodPost, "rpc/activate_reviewer_session")
+			if (len(calls) == 1) != tc.wantRPC {
+				t.Fatalf("activation RPC calls = %d, want %v", len(calls), tc.wantRPC)
+			}
+			if !tc.wantRPC {
+				return
+			}
+			if strings.Contains(calls[0].Body, "SESSION-") ||
+				!strings.Contains(calls[0].Body, hashToken("SESSION-A")) ||
+				!strings.Contains(calls[0].Body, testReviewID) {
+				t.Fatalf("activation did not send the hashed tokens for this review: %s", calls[0].Body)
+			}
+			if body["token_hash"] != hashToken("SESSION-B") {
+				t.Fatalf("response did not say which token is live: %v", body)
+			}
+		})
+	}
+}
+
+func TestSessionSubmitDrawsOnItsOwnAddressBudget(t *testing.T) {
+	fake, reviews, _ := servers(t)
+	sessionFake(fake, true)
+
+	serve(reviews.HandleSubmit, http.MethodPost, "/v1/reviews", "/v1/reviews", sessionSubmitBody, "")
+
+	var actions []string
+	for _, call := range fake.requests(http.MethodPost, "rpc/bump_rate_limit") {
+		actions = append(actions, call.Body)
+	}
+	joined := strings.Join(actions, " ")
+	if !strings.Contains(joined, `"submit_session"`) || strings.Contains(joined, `"submit_email"`) {
+		t.Fatalf("session submit used the wrong per-address limit: %s", joined)
+	}
+	if refunds := fake.requests(http.MethodPost, "rpc/refund_reviewer_session"); len(refunds) != 0 {
+		t.Fatalf("a review that landed refunded its session use: %+v", refunds)
+	}
+}
+
+// A use is spent before the checks so concurrent submits cannot share the last
+// one, and given back when the review does not land.
+func TestSessionUseIsRefundedWhenTheReviewDoesNotLand(t *testing.T) {
+	for _, failure := range []string{"duplicate", "validation", "mail"} {
+		t.Run(failure, func(t *testing.T) {
+			fake, reviews, _ := servers(t)
+			sessionFake(fake, true)
+			body := sessionSubmitBody
+			switch failure {
+			case "duplicate":
+				fake.onFunc(http.MethodPost, "reviews", func(recordedRequest) (int, string) {
+					return http.StatusConflict, `{"code":"23505","message":"duplicate key value violates unique constraint \"reviews_one_per_person\""}`
+				})
+			case "validation":
+				body = strings.Replace(body, `"rating":4`, `"rating":4.3`, 1)
+			case "mail":
+				fake.onFunc(http.MethodPost, "email_outbox", func(recordedRequest) (int, string) {
+					return http.StatusInternalServerError, `{"message":"boom"}`
+				})
+			}
+
+			res := serve(reviews.HandleSubmit, http.MethodPost, "/v1/reviews", "/v1/reviews", body, "")
+
+			if res.Code < 400 {
+				t.Fatalf("status = %d, want a failure: %s", res.Code, res.Body.String())
+			}
+			refunds := fake.requests(http.MethodPost, "rpc/refund_reviewer_session")
+			if len(refunds) != 1 || !strings.Contains(refunds[0].Body, hashToken("SESSION")) {
+				t.Fatalf("the spent use was not refunded: %+v", refunds)
+			}
+			if failure == "mail" {
+				// The queued mail is the only record of the address; a review
+				// without it could never be sent a rejection notice.
+				deletes := fake.requests(http.MethodDelete, "reviews")
+				if len(deletes) != 1 || !strings.Contains(deletes[0].Query, "id=eq."+testReviewID) {
+					t.Fatalf("an uncontactable review was kept: %+v", deletes)
+				}
+				if res.Code != http.StatusServiceUnavailable {
+					t.Fatalf("status = %d, want 503", res.Code)
+				}
+			}
+		})
+	}
+}
+
 /* ================= decide: the classifier and escalated reviews ========= */
 
 func decideFake(fake *fakePostgREST, status string) {

@@ -1431,7 +1431,8 @@
   &quot;title&quot;: &quot;Genuinely excellent lecturer&quot;,
   &quot;body&quot;: &quot;…&quot;,
   &quot;email&quot;: &quot;student@terpmail.umd.edu&quot;,
-  &quot;captcha_token&quot;: &quot;0.abc…&quot;
+  &quot;captcha_token&quot;: &quot;0.abc…&quot;,
+  &quot;session_token&quot;: &quot;…&quot;
 }
 </code></pre>
         <p><code>rating</code> is a decimal between 1 and 5 <strong>on a half step</strong> — <code>4.5</code> is valid,
@@ -1439,11 +1440,34 @@
         stored only as a peppered hash, is never displayed, and is never shown to the
         professor. <code>course_code</code> and <code>term</code> are optional, and <code>term</code> must be a Fall or
         Spring term, because the grade dataset covers only those.</p>
-        <p>Responds <code>202 Accepted</code> with <code>{&quot;status&quot;:&quot;verification_sent&quot;}</code>.</p>
+        <p>Responds <code>202 Accepted</code> with
+        <code>{&quot;status&quot;:&quot;verification_sent&quot;,&quot;session_token&quot;:&quot;…&quot;}</code>.</p>
         <p><strong>The response is identical whether or not that address has already reviewed
         this professor.</strong> A distinguishable &quot;you have already reviewed this&quot; would turn
         the endpoint into an oracle for &quot;did person X review professor Y&quot;, which is the
         privacy property the hashing exists to provide.</p>
+        <h3 id="reviewer-sessions">Reviewer sessions</h3>
+        <p>The <code>session_token</code> in a <code>202</code> lets this browser skip the confirmation email
+        for a while. A session needs two secrets that are kept in different places:
+        this token, and the review's emailed verification token. After the emailed link
+        is confirmed, the verify page sends both to
+        <a href="#-post-v1-reviews-sessions-"><code>POST /v1/reviews/sessions</code></a> to start the session.
+        The token on its own does nothing. So does the link on its own, and so does
+        opening the link in a different browser.</p>
+        <p>For <strong>5 hours</strong> after that, a submission that sends the token as
+        <code>session_token</code> <strong>with the same <code>email</code></strong> skips the confirmation email. It
+        responds <code>201 Created</code> and goes straight to moderation:</p>
+<pre><code class="language-json">{ &quot;status&quot;: &quot;submitted&quot;, &quot;manage_key&quot;: &quot;…&quot;, &quot;message&quot;: &quot;…&quot; }
+</code></pre>
+        <p>Each session allows at most 20 reviews, and each address at most 20 session
+        reviews a day. These replace the per-address limit below; the per-IP and
+        per-professor limits, the captcha and moderation all still apply. A submission
+        that fails gives its use back. A session is not extended by use. It ends, and
+        no new one can start, once any review from that address has been rejected.</p>
+        <p>A token that is expired, used up, revoked or for a different address is
+        ignored: the submission goes through the email flow and gets a new <code>202</code> with
+        a new token. Because the address has already been proven, a session
+        submission that duplicates an existing review answers <code>409</code>.</p>
         <p>Rate limited to 10 per hour per IP, 10 per day per address, and 20 per hour per
         professor across all submitters. The last one is what catches a coordinated
         run on a single professor, which the per-person limits do nothing about.</p>
@@ -1456,6 +1480,19 @@
         because mail clients prefetch links and people double-click.</p>
         <p>The manage key is also emailed. It cannot be recovered — there is deliberately
         no way to link it back to a person.</p>
+        <h2 id="-post-v1-reviews-sessions-"><code>POST /v1/reviews/sessions</code></h2>
+        <p>Starts a <a href="#reviewer-sessions">reviewer session</a>. Called by the verify page
+        after the link has been confirmed:</p>
+<pre><code class="language-json">{ &quot;verify_token&quot;: &quot;…&quot;, &quot;session_tokens&quot;: [&quot;…&quot;, &quot;…&quot;] }
+</code></pre>
+        <p><code>session_tokens</code> is every token this browser holds, at most 20. Responds
+        <code>200</code> with <code>{&quot;activated&quot;: false}</code> when the link has not been confirmed, has
+        expired, or none of the tokens belongs to its review, so a failure confirms
+        nothing about either secret. On success it returns which token is now live, by
+        its SHA-256 hash, and when it expires:</p>
+<pre><code class="language-json">{ &quot;activated&quot;: true, &quot;token_hash&quot;: &quot;…&quot;, &quot;expires_at&quot;: &quot;2026-11-02T20:00:00+00:00&quot; }
+</code></pre>
+        <p>A session starts only once. Opening the link again cannot restart it.</p>
         <h2 id="-delete-v1-reviews-id-"><code>DELETE /v1/reviews/:id</code></h2>
         <p><code>Authorization: Bearer &lt;manage key&gt;</code>.</p>
         <p>A withdrawal is a soft delete — the row remains so the one-review-per-person

@@ -24,6 +24,9 @@ type SubmitReviewRequest struct {
 	Body           string   `json:"body"`
 	Email          string   `json:"email" binding:"required"`
 	CaptchaToken   string   `json:"captcha_token"`
+	// From an earlier submit response. Skips the confirmation email when the
+	// session it names is active and bound to `Email`; see reviewer sessions.
+	SessionToken string `json:"session_token"`
 }
 
 type reviewRow struct {
@@ -227,9 +230,37 @@ func (s *ReviewServer) HandleSubmit(ctx *gin.Context) {
 
 	emailHash := hashEmail(email, s.cfg.EmailPepper)
 
+	// An active session for this address skips the confirmation email.
+	//
+	// Anything short of that -- no token, an unknown, expired, exhausted or
+	// revoked one, one bound to a different address, or a failed lookup --
+	// falls through to the email flow rather than erroring, so the response
+	// says nothing about whether a token was ever valid.
+	//
+	// The use is spent here, before the checks below, so that two concurrent
+	// submits cannot both take the last one; it is given back unless a review
+	// actually lands, so a typo, a duplicate or an outage costs nothing.
+	usingSession := req.SessionToken != "" && s.consumeSession(req.SessionToken, emailHash)
+	sessionLanded := false
+	if usingSession {
+		defer func() {
+			if !sessionLanded {
+				s.refundSession(req.SessionToken)
+			}
+		}()
+	}
+
 	// 4. Per-address rate limit. Only reachable once the address is known to
 	// be well-formed and in an allowed domain.
-	within, err = checkRateLimit(s.write, "email:"+emailHash, limitPerEmail)
+	//
+	// Session submits draw on a budget of their own. Sharing this one meant the
+	// session cap could never be reached; raising this one instead would have
+	// loosened the email flow, where every submit sends a mail.
+	bucket, limit := "email:"+emailHash, limitPerEmail
+	if usingSession {
+		bucket, limit = "session:"+emailHash, limitPerSessionEmail
+	}
+	within, err = checkRateLimit(s.write, bucket, limit)
 	if err != nil {
 		log.Printf("rate limit check failed: %v", err)
 		ctx.JSON(http.StatusServiceUnavailable, gin.H{"error": "try again shortly"})
@@ -310,31 +341,13 @@ func (s *ReviewServer) HandleSubmit(ctx *gin.Context) {
 		return
 	}
 
-	// 10. Insert, mint a verification token, queue the email.
-	verifyToken, err := newToken()
-	if err != nil {
-		sendInternalError(ctx, "v1/reviews", err)
-		return
-	}
-	// A placeholder, because `edit_key_hash` is NOT NULL and there is nothing
-	// to put there yet. The key the reviewer actually receives is minted in
-	// HandleVerify and overwrites this. Random rather than a constant so that
-	// an unverified row never shares a hash with any other.
-	placeholderKey, err := newToken()
-	if err != nil {
-		sendInternalError(ctx, "v1/reviews", err)
-		return
-	}
-
 	row := map[string]any{
 		"instructor_id":   instructor.ID,
 		"rating":          *req.Rating,
 		"email_hash":      emailHash,
 		"email_domain":    domain,
-		"edit_key_hash":   hashToken(placeholderKey),
 		"submit_ip_hash":  hashOpaque(ip, s.cfg.EmailPepper),
 		"user_agent_hash": hashOpaque(ctx.GetHeader("User-Agent"), s.cfg.EmailPepper),
-		"status":          "unverified",
 	}
 	if courseCode != "" {
 		row["course_code"] = courseCode
@@ -352,13 +365,47 @@ func (s *ReviewServer) HandleSubmit(ctx *gin.Context) {
 		row["expected_grade"] = req.ExpectedGrade
 	}
 
+	// 10. A session vouched for the address: no email to send.
+	if usingSession {
+		sessionLanded = s.submitWithSession(ctx, row, email, instructor)
+		return
+	}
+
+	// 11. Insert, mint a verification token, queue the email.
+	verifyToken, err := newToken()
+	if err != nil {
+		sendInternalError(ctx, "v1/reviews", err)
+		return
+	}
+	// A placeholder, because `edit_key_hash` is NOT NULL and there is nothing
+	// to put there yet. The key the reviewer actually receives is minted in
+	// HandleVerify and overwrites this. Random rather than a constant so that
+	// an unverified row never shares a hash with any other.
+	placeholderKey, err := newToken()
+	if err != nil {
+		sendInternalError(ctx, "v1/reviews", err)
+		return
+	}
+	// Minted before the insert so the duplicate branch below can return one
+	// too. Every email-flow response carries a token: one present only when
+	// the insert succeeded would answer "has this address already reviewed
+	// this professor" just as surely as a different status would.
+	sessionToken, err := newToken()
+	if err != nil {
+		sendInternalError(ctx, "v1/reviews", err)
+		return
+	}
+	row["edit_key_hash"] = hashToken(placeholderKey)
+	row["status"] = "unverified"
+
 	var inserted []reviewRow
 	if err := s.write.Insert("reviews", []any{row}, &inserted); err != nil {
 		// A unique-index violation means this address already has a live
 		// review for this professor and course. Answer exactly as if it had
-		// succeeded: see the note on this handler.
+		// succeeded: see the note on this handler. The session token is never
+		// stored, so it can never activate.
 		if strings.Contains(err.Error(), "reviews_one_per_person") {
-			ctx.JSON(http.StatusAccepted, gin.H{"status": "verification_sent"})
+			ctx.JSON(http.StatusAccepted, gin.H{"status": "verification_sent", "session_token": sessionToken})
 			return
 		}
 		log.Printf("review insert failed: %v", err)
@@ -392,6 +439,17 @@ func (s *ReviewServer) HandleSubmit(ctx *gin.Context) {
 		return
 	}
 
+	// Inert until this review is verified. Best effort: if it fails to store,
+	// the reviewer gets an email for their next review too, which is the
+	// behaviour before sessions existed rather than a broken submission.
+	if err := s.write.Insert("reviewer_sessions", []any{map[string]any{
+		"token_hash": hashToken(sessionToken),
+		"email_hash": emailHash,
+		"review_id":  review.ID,
+	}}, nil); err != nil {
+		log.Printf("reviewer session insert failed for review %s: %v", review.ID, err)
+	}
+
 	// The recipient stored on this row is what makes the reviewer contactable
 	// later -- for their manage key on verification, and for a rejection
 	// notice with an appeal route. It is purged by PurgeContact once the
@@ -418,7 +476,230 @@ func (s *ReviewServer) HandleSubmit(ctx *gin.Context) {
 		log.Printf("email flush after submit failed: %v", err)
 	}
 
-	ctx.JSON(http.StatusAccepted, gin.H{"status": "verification_sent"})
+	ctx.JSON(http.StatusAccepted, gin.H{"status": "verification_sent", "session_token": sessionToken})
+}
+
+/* =========================== reviewer sessions ========================== */
+
+const (
+	// From the moment the review that opened the session is verified. Fixed:
+	// using the session does not extend it, so an active reviewer still
+	// re-proves their address at least this often.
+	reviewerSessionLifetime = 5 * time.Hour
+	// Submits a session can authorise: what one leaked token is worth. The
+	// per-address session limit applies across sessions on top of it.
+	reviewerSessionMaxUses = 20
+	// Session tokens one activation request may present. The site keeps no
+	// more than this per browser.
+	reviewerSessionMaxStored = 20
+)
+
+// consumeSession spends one use of the session named by `token`, if it is
+// active and bound to `emailHash`, and reports whether it did.
+//
+// A lookup failure answers false: the caller then sends a confirmation email,
+// which is the safe direction to fail in.
+func (s *ReviewServer) consumeSession(token, emailHash string) bool {
+	var ok *bool
+	if err := s.write.RPC("consume_reviewer_session", map[string]any{
+		"p_token_hash": hashToken(token),
+		"p_email_hash": emailHash,
+		"p_max_uses":   reviewerSessionMaxUses,
+	}, &ok); err != nil {
+		log.Printf("reviewer session lookup failed: %v", err)
+		return false
+	}
+	return ok != nil && *ok
+}
+
+// refundSession gives back a use spent on a submission that did not land.
+// Best effort: a failure costs the reviewer one use, not a review.
+func (s *ReviewServer) refundSession(token string) {
+	if err := s.write.RPC("refund_reviewer_session", map[string]any{
+		"p_token_hash": hashToken(token),
+	}, nil); err != nil {
+		log.Printf("refunding reviewer session use failed: %v", err)
+	}
+}
+
+// submitWithSession finishes a submission whose address a session has already
+// proven: the review goes straight to `pending`, exactly where a click on the
+// confirmation link would have put it, and gets the same tail as HandleVerify.
+// It reports whether the review landed, so the caller knows whether to refund
+// the session use.
+//
+// It never mints a session of its own. A session is opened only by a review
+// that went through email, so one verification cannot be chained into an
+// indefinite run of them.
+func (s *ReviewServer) submitWithSession(ctx *gin.Context, row map[string]any, email string, instructor *instructorRow) bool {
+	manageKey, err := newToken()
+	if err != nil {
+		sendInternalError(ctx, "v1/reviews", err)
+		return false
+	}
+	row["edit_key_hash"] = hashToken(manageKey)
+	row["status"] = "pending"
+	row["verified_at"] = time.Now().UTC().Format(time.RFC3339)
+
+	var inserted []reviewRow
+	if err := s.write.Insert("reviews", []any{row}, &inserted); err != nil {
+		// Saying so is safe here, unlike in the email flow: the caller has
+		// already proven they hold this address, so the only person this can
+		// tell is the one who wrote the earlier review.
+		if strings.Contains(err.Error(), "reviews_one_per_person") {
+			ctx.JSON(http.StatusConflict, gin.H{
+				"error": "you have already reviewed this professor for this course",
+			})
+			return false
+		}
+		log.Printf("review insert failed: %v", err)
+		ctx.JSON(http.StatusServiceUnavailable, gin.H{"error": "try again shortly"})
+		return false
+	}
+	if len(inserted) == 0 {
+		sendInternalError(ctx, "v1/reviews", fmt.Errorf("insert returned no rows"))
+		return false
+	}
+	review := inserted[0]
+
+	// Fatal, and undone, like a verification token that fails to store. The
+	// queued row is the only place this review's address is kept: without it
+	// a rejection notice and its appeal route have nobody to go to.
+	if err := s.queueManageKey(review.ID, email, instructor.Name, manageKey); err != nil {
+		log.Printf("queueing manage key email failed for session review %s: %v", review.ID, err)
+		if delErr := s.write.Delete("reviews", eq("id", review.ID)); delErr != nil {
+			// Left `pending` with no contact. Moderation still reads it; only
+			// a rejection notice is lost, which is what this tried to avoid.
+			log.Printf("removing session review %s after its mail failed: %v", review.ID, delErr)
+		}
+		ctx.JSON(http.StatusServiceUnavailable, gin.H{"error": "try again shortly"})
+		return false
+	}
+	s.triage.Dispatch(review.ID)
+
+	ctx.JSON(http.StatusCreated, gin.H{
+		"status":     "submitted",
+		"message":    "Thanks. Your review is awaiting moderation.",
+		"manage_key": manageKey,
+	})
+	return true
+}
+
+// HandleActivateSession starts a reviewer session. Called by the verify page,
+// after the link is confirmed, with every session token that browser holds.
+//
+// Activation needs the verification token from the email *and* the session
+// token from the submit response in one request. It used to happen inside
+// HandleVerify on the link alone, which let anyone start a session for
+// someone else's address: submit with the victim's address, keep the token,
+// and wait for the victim's mail scanner to open the link.
+//
+// The response is the same `{"activated": false}` for every reason it can
+// fail, so it confirms nothing about either token.
+func (s *ReviewServer) HandleActivateSession(ctx *gin.Context) {
+	var req struct {
+		VerifyToken   string   `json:"verify_token"`
+		SessionTokens []string `json:"session_tokens"`
+	}
+	if err := ctx.ShouldBindJSON(&req); err != nil || req.VerifyToken == "" || len(req.SessionTokens) == 0 {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "malformed request body"})
+		return
+	}
+	// The site keeps at most this many; more is not a browser.
+	if len(req.SessionTokens) > reviewerSessionMaxStored {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "too many session tokens"})
+		return
+	}
+
+	within, err := checkRateLimit(s.write,
+		"activate:"+hashOpaque(clientIP(ctx), s.cfg.EmailPepper), limitPerActivation)
+	if err != nil {
+		log.Printf("rate limit check failed: %v", err)
+		ctx.JSON(http.StatusServiceUnavailable, gin.H{"error": "try again shortly"})
+		return
+	}
+	if !within {
+		ctx.JSON(http.StatusTooManyRequests, gin.H{"error": "too many attempts, try again later"})
+		return
+	}
+
+	notActivated := gin.H{"activated": false}
+
+	params := url.Values{}
+	params.Set("select", "*")
+	params.Set("token_hash", "eq."+hashToken(req.VerifyToken))
+	params.Set("purpose", "eq.verify")
+	params.Set("limit", "1")
+	var tokens []tokenRow
+	if err := s.write.Select("review_tokens", params, &tokens); err != nil {
+		sendInternalError(ctx, "v1/reviews/sessions", err)
+		return
+	}
+	if len(tokens) == 0 {
+		ctx.JSON(http.StatusOK, notActivated)
+		return
+	}
+	found := tokens[0]
+
+	// Unlike HandleVerify, a used link past its expiry is refused too: that
+	// handler lets a replay through to report success, but a link two days
+	// old should not be able to start a session.
+	expires, err := time.Parse(time.RFC3339, found.ExpiresAt)
+	if err != nil || time.Now().After(expires) {
+		ctx.JSON(http.StatusOK, notActivated)
+		return
+	}
+	// Only once the link has actually confirmed the review. Without this, the
+	// session would start before the review it vouches for was verified.
+	if found.UsedAt == nil {
+		ctx.JSON(http.StatusOK, notActivated)
+		return
+	}
+
+	hashes := make([]string, len(req.SessionTokens))
+	for i, token := range req.SessionTokens {
+		hashes[i] = hashToken(token)
+	}
+	var activated []struct {
+		TokenHash string `json:"token_hash"`
+		ExpiresAt string `json:"expires_at"`
+	}
+	if err := s.write.RPC("activate_reviewer_session", map[string]any{
+		"p_review_id":    found.ReviewID,
+		"p_token_hashes": hashes,
+		"p_lifetime":     fmt.Sprintf("%d seconds", int(reviewerSessionLifetime.Seconds())),
+	}, &activated); err != nil {
+		sendInternalError(ctx, "v1/reviews/sessions", err)
+		return
+	}
+	if len(activated) == 0 {
+		ctx.JSON(http.StatusOK, notActivated)
+		return
+	}
+	// The hash, not the token, tells the browser which of its tokens is now
+	// live without echoing a secret back.
+	ctx.JSON(http.StatusOK, gin.H{
+		"activated":  true,
+		"token_hash": activated[0].TokenHash,
+		"expires_at": activated[0].ExpiresAt,
+	})
+}
+
+// PurgeReviewerSessions deletes sessions that can no longer authorise
+// anything: expired ones, and ones never activated after the verification
+// link that would have activated them has itself expired.
+func PurgeReviewerSessions(write *WriteClient) (int, error) {
+	now := time.Now().UTC()
+	params := url.Values{}
+	params.Set("or", fmt.Sprintf("(expires_at.lt.%s,and(activated_at.is.null,created_at.lt.%s))",
+		now.Format(time.RFC3339), now.Add(-48*time.Hour).Format(time.RFC3339)))
+	var deleted []struct {
+		TokenHash string `json:"token_hash"`
+	}
+	if err := write.DeleteReturning("reviewer_sessions", params, &deleted); err != nil {
+		return 0, err
+	}
+	return len(deleted), nil
 }
 
 func validExpectedGrade(grade string) bool {
@@ -617,17 +898,31 @@ func (s *ReviewServer) emailManageKey(reviewID string, instructorID int64, manag
 		name = instructors[0].Name
 	}
 
+	if err := s.queueManageKey(reviewID, recipient, name, manageKey); err != nil {
+		log.Printf("queueing manage key email failed for review %s: %v", reviewID, err)
+	}
+}
+
+// queueManageKey queues and sends the manage-key mail to a known recipient.
+//
+// A session submit has no verification mail on its review for RecipientFor to
+// find, so it comes here directly with the address it was given. The queued
+// row is also what keeps that review contactable for a rejection notice.
+//
+// Only a failure to queue is returned. A failure to send is not the caller's
+// problem: the row stays queued and the hourly sweep retries it.
+func (s *ReviewServer) queueManageKey(reviewID, recipient, instructorName, manageKey string) error {
 	if err := s.email.Queue(reviewID, recipient, "manage_key", map[string]any{
 		"manage_key":      manageKey,
-		"instructor_name": name,
+		"instructor_name": instructorName,
 	}); err != nil {
-		log.Printf("queueing manage key email failed for review %s: %v", reviewID, err)
-		return
+		return err
 	}
 	// Inline for the same reason as the flush in HandleSubmit.
 	if _, err := s.email.Flush(5); err != nil {
-		log.Printf("email flush after verify failed: %v", err)
+		log.Printf("email flush of manage key failed: %v", err)
 	}
+	return nil
 }
 
 /* ============================== manage ================================== */
