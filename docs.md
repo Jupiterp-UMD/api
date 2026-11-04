@@ -855,7 +855,7 @@ is confirmed, the verify page sends both to
 The token on its own does nothing. So does the link on its own, and so does
 opening the link in a different browser.
 
-For **5 hours** after that, a submission that sends the token as
+For **24 hours** after that, a submission that sends the token as
 `session_token` **with the same `email`** skips the confirmation email. It
 responds `201 Created` and goes straight to moderation:
 

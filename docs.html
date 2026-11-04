@@ -1454,7 +1454,7 @@
         <a href="#-post-v1-reviews-sessions-"><code>POST /v1/reviews/sessions</code></a> to start the session.
         The token on its own does nothing. So does the link on its own, and so does
         opening the link in a different browser.</p>
-        <p>For <strong>5 hours</strong> after that, a submission that sends the token as
+        <p>For <strong>24 hours</strong> after that, a submission that sends the token as
         <code>session_token</code> <strong>with the same <code>email</code></strong> skips the confirmation email. It
         responds <code>201 Created</code> and goes straight to moderation:</p>
 <pre><code class="language-json">{ &quot;status&quot;: &quot;submitted&quot;, &quot;manage_key&quot;: &quot;…&quot;, &quot;message&quot;: &quot;…&quot; }
