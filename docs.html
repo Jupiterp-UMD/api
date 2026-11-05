@@ -1459,18 +1459,16 @@
         responds <code>201 Created</code> and goes straight to moderation:</p>
 <pre><code class="language-json">{ &quot;status&quot;: &quot;submitted&quot;, &quot;manage_key&quot;: &quot;…&quot;, &quot;message&quot;: &quot;…&quot; }
 </code></pre>
-        <p>Each session allows at most 20 reviews, and each address at most 20 session
-        reviews a day. These replace the per-address limit below; the per-IP and
-        per-professor limits, the captcha and moderation all still apply. A submission
+        <p>Each session allows at most 20 reviews. The per-professor limit, the captcha
+        and moderation all still apply. A submission
         that fails gives its use back. A session is not extended by use. It ends, and
         no new one can start, once any review from that address has been rejected.</p>
         <p>A token that is expired, used up, revoked or for a different address is
         ignored: the submission goes through the email flow and gets a new <code>202</code> with
         a new token. Because the address has already been proven, a session
         submission that duplicates an existing review answers <code>409</code>.</p>
-        <p>Rate limited to 10 per hour per IP, 10 per day per address, and 20 per hour per
-        professor across all submitters. The last one is what catches a coordinated
-        run on a single professor, which the per-person limits do nothing about.</p>
+        <p>Rate limited to 20 per hour per professor across all submitters, which is what
+        catches a coordinated run on a single professor.</p>
         <h2 id="-get-v1-reviews-verify-token-"><code>GET /v1/reviews/verify/:token</code></h2>
         <p>Confirms the emailed link, moves the review to <code>pending</code>, and returns the
         manage key once:</p>

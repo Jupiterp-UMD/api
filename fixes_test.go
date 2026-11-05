@@ -391,20 +391,12 @@ func TestActivationNeedsAConfirmedUnexpiredLinkAndTheSessionToken(t *testing.T) 
 	}
 }
 
-func TestSessionSubmitDrawsOnItsOwnAddressBudget(t *testing.T) {
+func TestSessionSubmitThatLandsKeepsItsUse(t *testing.T) {
 	fake, reviews, _ := servers(t)
 	sessionFake(fake, true)
 
 	serve(reviews.HandleSubmit, http.MethodPost, "/v1/reviews", "/v1/reviews", sessionSubmitBody, "")
 
-	var actions []string
-	for _, call := range fake.requests(http.MethodPost, "rpc/bump_rate_limit") {
-		actions = append(actions, call.Body)
-	}
-	joined := strings.Join(actions, " ")
-	if !strings.Contains(joined, `"submit_session"`) || strings.Contains(joined, `"submit_email"`) {
-		t.Fatalf("session submit used the wrong per-address limit: %s", joined)
-	}
 	if refunds := fake.requests(http.MethodPost, "rpc/refund_reviewer_session"); len(refunds) != 0 {
 		t.Fatalf("a review that landed refunded its session use: %+v", refunds)
 	}

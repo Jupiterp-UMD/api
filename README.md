@@ -39,9 +39,9 @@ Cloudflare's cache instead of waking Cloud Run and querying Supabase.
    `--update-secrets=...,EDGE_PROXY_SECRET=EDGE_PROXY_SECRET:latest`.
 
    Do this *before* turning on the proxy. Without it, every request appears to
-   come from a Cloudflare edge server, and the per-IP rate limits on review
-   submission, manage keys, and reports are shared by everyone routed through
-   that edge. See `TrustEdgeProxy` in `security.go`.
+   come from a Cloudflare edge server, and the per-IP rate limits on manage
+   keys and reports are shared by everyone routed through that edge. See
+   `TrustEdgeProxy` in `security.go`.
 
 2. **Transform Rule** (Rules → Transform Rules → Modify Request Header), on
    `http.host eq "api.jupiterp.com"`: *Set static* `X-Jupiterp-Edge-Secret` to

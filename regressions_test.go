@@ -591,9 +591,8 @@ func TestShadowModeReasonOmitsAbsentConfidence(t *testing.T) {
 
 // clientIP read the LEFTMOST X-Forwarded-For entry, which is the one value in
 // the header a caller fully controls: Cloud Run preserves what the client sent
-// and appends what it observed. Three limiters key off this -- submissions per
-// IP, manage-key attempts, and reports -- so a caller varying one header
-// bypassed all three, and wrote their chosen string into `submit_ip_hash` and
+// and appends what it observed. The manage-key and report limiters key off
+// this, so a caller varying one header bypassed both, and wrote their chosen string into `submit_ip_hash` and
 // the request log at the same time.
 func TestClientIPIgnoresCallerSuppliedForwardedFor(t *testing.T) {
 	gin.SetMode(gin.TestMode)

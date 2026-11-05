@@ -863,9 +863,8 @@ responds `201 Created` and goes straight to moderation:
 { "status": "submitted", "manage_key": "…", "message": "…" }
 ```
 
-Each session allows at most 20 reviews, and each address at most 20 session
-reviews a day. These replace the per-address limit below; the per-IP and
-per-professor limits, the captcha and moderation all still apply. A submission
+Each session allows at most 20 reviews. The per-professor limit, the captcha
+and moderation all still apply. A submission
 that fails gives its use back. A session is not extended by use. It ends, and
 no new one can start, once any review from that address has been rejected.
 
@@ -874,9 +873,8 @@ ignored: the submission goes through the email flow and gets a new `202` with
 a new token. Because the address has already been proven, a session
 submission that duplicates an existing review answers `409`.
 
-Rate limited to 10 per hour per IP, 10 per day per address, and 20 per hour per
-professor across all submitters. The last one is what catches a coordinated
-run on a single professor, which the per-person limits do nothing about.
+Rate limited to 20 per hour per professor across all submitters, which is what
+catches a coordinated run on a single professor.
 
 ## `GET /v1/reviews/verify/:token`
 
