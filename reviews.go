@@ -446,8 +446,7 @@ const (
 	// using the session does not extend it, so an active reviewer still
 	// re-proves their address at least this often.
 	reviewerSessionLifetime = 24 * time.Hour
-	// Submits a session can authorise: what one leaked token is worth. The
-	// per-address session limit applies across sessions on top of it.
+	// Submits a session can authorise: what one leaked token is worth.
 	reviewerSessionMaxUses = 20
 	// Session tokens one activation request may present. The site keeps no
 	// more than this per browser.
