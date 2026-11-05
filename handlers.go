@@ -244,8 +244,9 @@ type InstructorArgs struct {
 	//
 	// An instructor row is wide -- eighteen columns, most of them PlanetTerp
 	// provenance -- and a caller that wants a rating gets all of it. The course
-	// planner needs exactly `slug` and `average_rating` for all 2,976 active
-	// instructors, which was 1.3MB of which about 6% was read.
+	// planner needs four of them (`slug`, `name`, `average_rating` and
+	// `display_rating`) for all 2,976 active instructors, and the whole row for
+	// all of them was 1.3MB.
 	//
 	// Names are validated against a fixed set rather than forwarded, because
 	// this value lands in PostgREST's `select`, where an unchecked string can

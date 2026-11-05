@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"regexp"
 	"strings"
 	"testing"
@@ -392,8 +393,8 @@ func TestVerifyEmailLinksToTheConfiguredSite(t *testing.T) {
 // validated against a fixed set rather than forwarded.
 //
 // The endpoint exists because an instructor row is eighteen columns and the
-// course planner reads two of them, over every active instructor -- 1.3MB to
-// use about 6% of it. That is worth having, but not at the cost of letting a
+// course planner reads four of them, over every active instructor -- 1.3MB for
+// the whole row. That is worth having, but not at the cost of letting a
 // query string name columns or embed tables the endpoint does not publish.
 func TestInstructorColumnsRejectsAnythingNotAColumn(t *testing.T) {
 	for _, bad := range []string{
@@ -444,6 +445,31 @@ func TestInstructorSelectDefaultsToTheWholeRow(t *testing.T) {
 	}
 	if got := instructorSelect("slug,average_rating"); got != "slug,average_rating" {
 		t.Errorf("instructorSelect = %q, want \"slug,average_rating\"", got)
+	}
+}
+
+// docs.md lists the names `columns` accepts. A column added to the allowlist
+// and not to the docs is one callers cannot find, which is how `columns`
+// itself went undocumented.
+func TestInstructorColumnsAreDocumented(t *testing.T) {
+	docs, err := os.ReadFile("docs.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var row string
+	for _, line := range strings.Split(string(docs), "\n") {
+		if strings.HasPrefix(line, "| `columns` (optional) |") {
+			row = line
+			break
+		}
+	}
+	if row == "" {
+		t.Fatal("docs.md has no `columns` row for /v1/instructors")
+	}
+	for column := range instructorColumns {
+		if !strings.Contains(row, "`"+column+"`") {
+			t.Errorf("allowlisted column %q is missing from the documented `columns` list", column)
+		}
 	}
 }
 

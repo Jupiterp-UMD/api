@@ -399,7 +399,8 @@ Get a list of all instructors and their average ratings, including instructors n
 | `nameSearch` (optional) | Case-insensitive substring match on instructor name. Matched against a normalized form of the name, so accents and punctuation are ignored on both sides: `obrien` matches "O'Brien" and `jose` matches "José". | `nameSearch=walsh` |
 | `activeOnly` (optional) | If true, only returns instructors currently teaching at least one section. | `activeOnly=true` |
 | `count` (optional) | If true, the total number of matching records is returned in the `Content-Range` response header (`0-49/4812`). Costs an extra aggregate over the filtered set, so it is off by default. | `count=true` |
-| `ratings` (optional) | A string of equalities/inequalities to filter instructors by their average rating on PlanetTerp. Possible equality/inequality expressions are: eq, lte, lt, gt, gte, neq (for equal to, less than or equal to, less than, etc.). For multiple conditions, use multiple ratings arguments. | `ratings=gt.3.14&ratings=lt.5` |
+| `columns` (optional) | A comma-separated list of fields to return instead of the whole row. Allowed: `slug`, `name`, `average_rating`, `id`, `name_norm`, `pt_slug`, `pt_average_rating`, `pt_review_count`, `pt_snapshot_at`, `jupiterp_rating`, `jupiterp_review_count`, `display_rating`, `combined_rating`, `first_seen_term`, `last_seen_term`, `is_active`, `created_at`, `updated_at`. Any other name is rejected with a 400. | `columns=slug,name,display_rating` |
+| `ratings` (optional) | A string of equalities/inequalities to filter instructors by `average_rating`, the ranking score (the same value as `combined_rating`), not `display_rating`. Possible equality/inequality expressions are: eq, lte, lt, gt, gte, neq (for equal to, less than or equal to, less than, etc.). For multiple conditions, use multiple ratings arguments. | `ratings=gt.3.14&ratings=lt.5` |
 | `limit` (optional) | The number of results to return. Defaults to 100, maximum of 500. | `limit=10`|
 |`offset` (optional) | How many records to skip when returning results; defaults to 0 | `offset=5` |
 | `sortBy` (optional) | A comma-separated list of which columns to sort by when returning; can be sorted in ascending (`.asc`) or descending (`.desc`) order. | `sortBy=average_rating.asc,name.desc` |
@@ -411,7 +412,7 @@ Get a list of all instructors and their average ratings, including instructors n
 | `slug` | string | The internal string used to identify an individual instructor, unique to that instructor. See PlanetTerp API spec for more info. |
 | `name` | string | The instructor's name as listed on PlanetTerp |
 | `average_rating` | float | Legacy alias of `combined_rating`, kept for v0 clients. |
-| `display_rating` | float | The rating to show a reader: the recency-weighted average of Jupiterp reviews and the PlanetTerp baseline. Null only when the professor has no reviews. |
+| `display_rating` | float | The rating to show a reader: the recency-weighted average of Jupiterp reviews and the PlanetTerp baseline. Null when no reviews count toward it: no approved Jupiterp reviews, and no PlanetTerp reviews recent enough to count. |
 | `combined_rating` | float | The rating to rank by: `display_rating` pulled toward the site-wide average by a fixed number of notional reviews, so a professor with one 5-star review does not outrank one with sixty 4.8s. Not an average of the professor's reviews. |
 
 #### Examples
