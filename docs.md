@@ -873,7 +873,7 @@ ignored: the submission goes through the email flow and gets a new `202` with
 a new token. Because the address has already been proven, a session
 submission that duplicates an existing review answers `409`.
 
-Rate limited to 20 per hour per professor across all submitters, which is what
+Rate limited to 40 per hour per professor across all submitters, which is what
 catches a coordinated run on a single professor.
 
 ## `GET /v1/reviews/verify/:token`
