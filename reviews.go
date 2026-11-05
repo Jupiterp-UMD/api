@@ -182,27 +182,8 @@ func (s *ReviewServer) HandleSubmit(ctx *gin.Context) {
 	}
 
 	ip := clientIP(ctx)
-	ipBucket := "ip:" + hashOpaque(ip, s.cfg.EmailPepper)
 
-	// 1. Per-IP rate limit, before anything that costs money or a round trip.
-	//
-	// This used to sit after the captcha, so a caller sending junk tokens got
-	// an unmetered outbound request to Cloudflare per inbound request -- each
-	// holding a Cloud Run request slot for up to the ten-second client timeout
-	// -- and never touched a counter, because the counter was only reached by
-	// requests that had already passed. The cheap local check belongs first.
-	within, err := checkRateLimit(s.write, ipBucket, limitPerIP)
-	if err != nil {
-		log.Printf("rate limit check failed: %v", err)
-		ctx.JSON(http.StatusServiceUnavailable, gin.H{"error": "try again shortly"})
-		return
-	}
-	if !within {
-		ctx.JSON(http.StatusTooManyRequests, gin.H{"error": "too many reviews submitted recently"})
-		return
-	}
-
-	// 2. Captcha.
+	// 1. Captcha.
 	ok, err := verifyTurnstile(s.cfg, req.CaptchaToken, ip)
 	if err != nil {
 		log.Printf("turnstile verification errored: %v", err)
@@ -214,7 +195,7 @@ func (s *ReviewServer) HandleSubmit(ctx *gin.Context) {
 		return
 	}
 
-	// 3. Email shape and domain.
+	// 2. Email shape and domain.
 	email := strings.ToLower(strings.TrimSpace(req.Email))
 	if !emailRe.MatchString(email) {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": "that does not look like an email address"})
@@ -250,28 +231,7 @@ func (s *ReviewServer) HandleSubmit(ctx *gin.Context) {
 		}()
 	}
 
-	// 4. Per-address rate limit. Only reachable once the address is known to
-	// be well-formed and in an allowed domain.
-	//
-	// Session submits draw on a budget of their own. Sharing this one meant the
-	// session cap could never be reached; raising this one instead would have
-	// loosened the email flow, where every submit sends a mail.
-	bucket, limit := "email:"+emailHash, limitPerEmail
-	if usingSession {
-		bucket, limit = "session:"+emailHash, limitPerSessionEmail
-	}
-	within, err = checkRateLimit(s.write, bucket, limit)
-	if err != nil {
-		log.Printf("rate limit check failed: %v", err)
-		ctx.JSON(http.StatusServiceUnavailable, gin.H{"error": "try again shortly"})
-		return
-	}
-	if !within {
-		ctx.JSON(http.StatusTooManyRequests, gin.H{"error": "too many reviews submitted recently"})
-		return
-	}
-
-	// 5. Instructor exists.
+	// 3. Instructor exists.
 	instructor, err := s.instructorBySlug(req.InstructorSlug)
 	if err != nil {
 		log.Printf("instructor lookup failed: %v", err)
@@ -285,11 +245,11 @@ func (s *ReviewServer) HandleSubmit(ctx *gin.Context) {
 
 	// Per-instructor limit, which is the one that catches brigading.
 	//
-	// Fails closed, like the two above. It used to swallow the error and let
-	// the request through, which disabled the anti-brigading control precisely
-	// when the database was struggling -- the moment a brigade is most likely
-	// to be what is causing the load.
-	within, err = checkRateLimit(s.write, fmt.Sprintf("instructor:%d", instructor.ID), limitPerInstructor)
+	// Fails closed. It used to swallow the error and let the request through,
+	// which disabled the anti-brigading control precisely when the database was
+	// struggling -- the moment a brigade is most likely to be what is causing
+	// the load.
+	within, err := checkRateLimit(s.write, fmt.Sprintf("instructor:%d", instructor.ID), limitPerInstructor)
 	if err != nil {
 		log.Printf("per-instructor rate limit check failed for instructor %d: %v", instructor.ID, err)
 		ctx.JSON(http.StatusServiceUnavailable, gin.H{"error": "try again shortly"})
@@ -301,14 +261,14 @@ func (s *ReviewServer) HandleSubmit(ctx *gin.Context) {
 		return
 	}
 
-	// 6. Course code, if given.
+	// 4. Course code, if given.
 	courseCode := strings.ToUpper(strings.TrimSpace(req.CourseCode))
 	if courseCode != "" && !courseCodeRe.MatchString(courseCode) {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": "course code should look like CMSC132"})
 		return
 	}
 
-	// 7. Term.
+	// 5. Term.
 	if req.Term != nil && !validTerm(*req.Term, time.Now()) {
 		ctx.JSON(http.StatusBadRequest, gin.H{
 			"error": "term must be a past or current Fall or Spring term, like 202508",
@@ -316,7 +276,7 @@ func (s *ReviewServer) HandleSubmit(ctx *gin.Context) {
 		return
 	}
 
-	// 8. Rating, on a half step.
+	// 6. Rating, on a half step.
 	if !validRating(*req.Rating) {
 		ctx.JSON(http.StatusBadRequest, gin.H{
 			"error": "rating must be between 1 and 5 in half steps, like 3.5",
@@ -324,7 +284,7 @@ func (s *ReviewServer) HandleSubmit(ctx *gin.Context) {
 		return
 	}
 
-	// 9. Content limits and sanitisation.
+	// 7. Content limits and sanitisation.
 	title := sanitizeText(req.Title)
 	body := sanitizeText(req.Body)
 	if len([]rune(title)) > 120 {
@@ -365,13 +325,13 @@ func (s *ReviewServer) HandleSubmit(ctx *gin.Context) {
 		row["expected_grade"] = req.ExpectedGrade
 	}
 
-	// 10. A session vouched for the address: no email to send.
+	// 8. A session vouched for the address: no email to send.
 	if usingSession {
 		sessionLanded = s.submitWithSession(ctx, row, email, instructor)
 		return
 	}
 
-	// 11. Insert, mint a verification token, queue the email.
+	// 9. Insert, mint a verification token, queue the email.
 	verifyToken, err := newToken()
 	if err != nil {
 		sendInternalError(ctx, "v1/reviews", err)

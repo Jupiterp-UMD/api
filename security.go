@@ -197,15 +197,6 @@ type RateLimit struct {
 }
 
 var (
-	// Per IP, per hour. Generous enough that a shared campus NAT does not lock
-	// out a lecture hall, tight enough to make scripted submission tedious.
-	limitPerIP = RateLimit{Action: "submit_ip", Window: time.Hour, Max: 10}
-	// Per email, per day.
-	limitPerEmail = RateLimit{Action: "submit_email", Window: 24 * time.Hour, Max: 10}
-	// Per email, per day, for submits made through a reviewer session, in
-	// place of the one above. Matches the per-session cap, so one session can
-	// be used in full; several sessions in a day still share this.
-	limitPerSessionEmail = RateLimit{Action: "submit_session", Window: 24 * time.Hour, Max: reviewerSessionMaxUses}
 	// Session activations per IP. Each needs two 256-bit secrets, so this is
 	// not what stops guessing; it bounds the database work an abuser can cause.
 	limitPerActivation = RateLimit{Action: "session_activate", Window: time.Hour, Max: 30}
@@ -261,9 +252,9 @@ func checkRateLimit(w *WriteClient, bucket string, limit RateLimit) (bool, error
 // client sent and appends the address it observed, so `X-Forwarded-For: 1.2.3.4`
 // arrives as `1.2.3.4, <real client>` and the leftmost read returned "1.2.3.4".
 //
-// That is not a cosmetic difference. Three limiters key off this value --
-// submissions per IP, manage-key attempts, and reports -- and all three were
-// bypassable by varying one header per request. `submit_ip_hash` and the
+// That is not a cosmetic difference. The limiters on manage-key attempts and
+// reports key off this value, and both were bypassable by varying one header
+// per request. `submit_ip_hash` and the
 // request log recorded the attacker's chosen string too, so the forensics that
 // exist to investigate exactly this were being written by the person under
 // investigation.
@@ -289,8 +280,8 @@ const edgeSecretHeader = "X-Jupiterp-Edge-Secret"
 // Behind Cloudflare, the rightmost X-Forwarded-For entry -- the address Cloud
 // Run observed -- is a Cloudflare edge server, not the visitor. Every limiter
 // keyed on clientIP would then share a handful of buckets across everyone
-// routed through the same edge, and ten submissions an hour from one campus
-// would lock the rest of it out.
+// routed through the same edge, and a few reports from one campus would lock
+// the rest of it out.
 //
 // Cloudflare does report the visitor, in `CF-Connecting-IP`, but that header is
 // only trustworthy when Cloudflare set it: the Cloud Run URL stays reachable
