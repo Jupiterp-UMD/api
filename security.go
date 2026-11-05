@@ -201,9 +201,8 @@ var (
 	// not what stops guessing; it bounds the database work an abuser can cause.
 	limitPerActivation = RateLimit{Action: "session_activate", Window: time.Hour, Max: 30}
 	// Per instructor, per hour, across all submitters. This is the one that
-	// catches brigading: the per-person limits do nothing against thirty
-	// people arriving at once to bury the same professor.
-	limitPerInstructor = RateLimit{Action: "submit_instructor", Window: time.Hour, Max: 20}
+	// catches brigading: a crowd arriving at once to bury the same professor.
+	limitPerInstructor = RateLimit{Action: "submit_instructor", Window: time.Hour, Max: 40}
 	// Manage-key attempts, to make brute force against a 256-bit key even less
 	// attractive than the arithmetic already does.
 	limitPerManageKey = RateLimit{Action: "manage", Window: time.Hour, Max: 30}

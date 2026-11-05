@@ -1467,7 +1467,7 @@
         ignored: the submission goes through the email flow and gets a new <code>202</code> with
         a new token. Because the address has already been proven, a session
         submission that duplicates an existing review answers <code>409</code>.</p>
-        <p>Rate limited to 20 per hour per professor across all submitters, which is what
+        <p>Rate limited to 40 per hour per professor across all submitters, which is what
         catches a coordinated run on a single professor.</p>
         <h2 id="-get-v1-reviews-verify-token-"><code>GET /v1/reviews/verify/:token</code></h2>
         <p>Confirms the emailed link, moves the review to <code>pending</code>, and returns the
