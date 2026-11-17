@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -18,7 +19,10 @@ import (
 const (
 	coursesTTL     time.Duration = 2 * time.Hour
 	instructorsTTL time.Duration = 12 * time.Hour
-	departmentsTTL time.Duration = 2 * time.Hour
+	// Short so a bad snapshot ages out quickly: the scraper replaces this table
+	// with a delete then an insert, and a request landing between the two
+	// caches an empty list that breaks course search until it expires.
+	departmentsTTL time.Duration = 15 * time.Minute
 	sectionsTTL    time.Duration = 15 * time.Minute
 	// Grade data changes once a term, when a new records request is fulfilled.
 	gradesTTL time.Duration = 12 * time.Hour
@@ -903,7 +907,29 @@ func (client SupabaseClient) handleGetDepartments(ctx *gin.Context) {
 		return
 	}
 
-	client.writeAndCacheResponse(ctx, res, path, key, departmentsTTL)
+	payload, err := buildPayloadFromResponse(res)
+	if err != nil {
+		sendInternalError(ctx, path, err)
+		return
+	}
+
+	// There are always departments, so an empty list means the request landed
+	// between the scraper's delete and insert. Serve it, but never cache it --
+	// here or in the browser -- or course search stays broken until it expires.
+	if payload.status == http.StatusOK && bytes.Equal(bytes.TrimSpace(payload.body), []byte("[]")) {
+		log.Printf("GET %s returned no departments; not caching", path)
+		payload.header.Del("Cache-Control")
+		ctx.Writer.Header().Set("Cache-Control", "no-store")
+		writePayload(ctx, payload, path, 0)
+		return
+	}
+
+	if writePayload(ctx, payload, path, departmentsTTL) {
+		log.Printf("Successfully handled GET %s with status %d", path, payload.status)
+	}
+	if payload.status < http.StatusInternalServerError {
+		client.cacheFor(path).Set(key, payload, departmentsTTL)
+	}
 }
 
 // Get section-level grade distributions.

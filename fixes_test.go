@@ -897,3 +897,41 @@ func TestReviewListingRejectsUnknownSortRatingAndSource(t *testing.T) {
 		t.Fatalf("a rejected listing reached the database %d times", len(calls))
 	}
 }
+
+/* ============================ department list =========================== */
+
+// An empty department list can only come from a request that landed between
+// the scraper's delete and insert. Caching it broke course search for hours, so
+// it must be served uncached and the next request must go back to the database.
+func TestEmptyDepartmentListIsNotCached(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	fake := newFakePostgREST(t)
+	client := SupabaseClient{
+		Url:         fake.server.URL,
+		Key:         "anon",
+		cache:       NewLRUCache(defaultCacheCapacity),
+		courseCache: NewLRUCache(courseCacheCapacity),
+	}
+	r := gin.New()
+	r.GET("/v1/deptList", client.handleGetDepartments)
+
+	fake.on(http.MethodGet, "departments", "[]")
+	first := get(r, "/v1/deptList")
+	if first.Code != http.StatusOK || first.Body.String() != "[]" {
+		t.Fatalf("empty list not passed through: %d %q", first.Code, first.Body.String())
+	}
+	if cc := first.Header().Get("Cache-Control"); cc != "no-store" {
+		t.Errorf("empty list must not be cached by browsers, got Cache-Control %q", cc)
+	}
+
+	full := `[{"dept_code":"CMSC","name":"Computer Science"}]`
+	fake.on(http.MethodGet, "departments", full)
+	if got := get(r, "/v1/deptList").Body.String(); got != full {
+		t.Fatalf("empty list was served from cache: %q", got)
+	}
+
+	get(r, "/v1/deptList")
+	if n := len(fake.requests(http.MethodGet, "departments")); n != 2 {
+		t.Errorf("a full list should be cached: expected 2 upstream calls, got %d", n)
+	}
+}
